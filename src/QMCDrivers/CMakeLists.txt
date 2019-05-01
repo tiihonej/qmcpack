@@ -37,6 +37,7 @@ SET(QMCDRIVERS
   GreenFunctionModifiers/DriftModifierBuilder.cpp
   GreenFunctionModifiers/DriftModifierUNR.cpp
   VMC/VMCUpdatePbyP.cpp
+  VMC/VMCUpdatePbyPGuide.cpp
   VMC/VMCUpdateAll.cpp
   VMC/VMCFactory.cpp
   DMC/DMC.cpp
