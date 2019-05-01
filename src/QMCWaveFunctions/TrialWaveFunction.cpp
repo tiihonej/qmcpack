@@ -460,6 +460,18 @@ TrialWaveFunction::RealType TrialWaveFunction::ratioGradGuide(ParticleSet& P
 #endif
 }
 
+TrialWaveFunction::GradType TrialWaveFunction::evalGradGuide(ParticleSet& P,int iat)
+{
+  GradType grad_iat;
+  for (int i=0, ii=VGL_TIMER; i<Z.size(); ++i, ii+=TIMER_SKIP)
+  {
+    myTimers[ii]->start();
+    grad_iat += Z[i]->evalGradGuide(P,iat);
+    myTimers[ii]->stop();
+  }
+  return grad_iat;
+}
+
 
 void TrialWaveFunction::printGL(ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L, std::string tag)
 {

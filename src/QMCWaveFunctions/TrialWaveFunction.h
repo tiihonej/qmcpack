@@ -248,6 +248,7 @@ public:
   //Functions related to VMC via a guiding function:
   RealType ratioGuide(ParticleSet& P, int iat);
   RealType ratioGradGuide(ParticleSet& P, int iat, GradType& grad_iat);
+  GradType evalGradGuide(ParticleSet& P, int iat);
   RealType evaluateLogOnlyGuide(ParticleSet& P);
 
   /** register all the wavefunction components in buffer.

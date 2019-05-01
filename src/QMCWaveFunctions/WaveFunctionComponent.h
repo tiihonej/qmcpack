@@ -303,6 +303,11 @@ struct WaveFunctionComponent: public QMCTraits
     return ratioGrad(P,iat,grad_iat);
   }
 
+  virtual GradType evalGradGuide(ParticleSet& P, int iat)
+  {
+    return evalGrad(P,iat);
+  }
+
   /** a move for iat-th particle is accepted. Update the content for the next moves
    * @param P target ParticleSet
    * @param iat index of the particle whose new position was proposed
