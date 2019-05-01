@@ -37,6 +37,8 @@ private:
   RealType logoffset, logepsilon;
   ///option to enable/disable drift equation or RN for VMC
   std::string UseDrift;
+  ///option to enable/disable alternate guiding function for VMC.
+  std::string UseGuide;
   ///check the run-time environments
   void resetRun();
   ///copy constructor

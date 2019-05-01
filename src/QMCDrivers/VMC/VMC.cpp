@@ -18,6 +18,7 @@
 
 #include "QMCDrivers/VMC/VMC.h"
 #include "QMCDrivers/VMC/VMCUpdatePbyP.h"
+#include "QMCDrivers/VMC/VMCUpdatePbyPGuide.h"
 #include "QMCDrivers/VMC/VMCUpdateAll.h"
 #include "OhmmsApp/RandomNumberControl.h"
 #include "Message/OpenMP.h"
@@ -49,7 +50,7 @@ VMC::VMC(MCWalkerConfiguration& w,
   m_param.add(UseDrift, "useDrift", "string");
   m_param.add(UseDrift, "usedrift", "string");
   m_param.add(UseDrift, "use_drift", "string");
-
+  m_param.add(UseGuide, "useGuide", "string");
   prevSteps               = nSteps;
   prevStepsBetweenSamples = nStepsBetweenSamples;
 }
@@ -179,7 +180,10 @@ void VMC::resetRun()
 #endif
       if (QMCDriverMode[QMC_UPDATE_MODE])
       {
-        Movers[ip] = new VMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
+        if(UseGuide == "yes")
+          Movers[ip] = new VMCUpdatePbyPGuide(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
+        else
+          Movers[ip] = new VMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
       }
       else
       {
