@@ -245,6 +245,11 @@ public:
   void acceptMove(ParticleSet& P, int iat);
   void completeUpdates();
 
+  //Functions related to VMC via a guiding function:
+  RealType ratioGuide(ParticleSet& P, int iat);
+  RealType ratioGradGuide(ParticleSet& P, int iat, GradType& grad_iat);
+  RealType evaluateLogOnlyGuide(ParticleSet& P);
+
   /** register all the wavefunction components in buffer.
    *  See WaveFunctionComponent::registerData for more detail */
   void registerData(ParticleSet& P, WFBufferType& buf);

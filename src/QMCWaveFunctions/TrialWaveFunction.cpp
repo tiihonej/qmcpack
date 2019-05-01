@@ -394,6 +394,73 @@ TrialWaveFunction::RealType TrialWaveFunction::ratioGrad(ParticleSet& P
 #endif
 }
 
+TrialWaveFunction::RealType
+TrialWaveFunction::evaluateLogOnlyGuide(ParticleSet& P)
+{
+  tempP->R=P.R;
+  tempP->L=0.0;
+  tempP->G=0.0;
+  ValueType logpsi(0.0);
+  PhaseValue=0.0;
+  std::vector<WaveFunctionComponent*>::iterator it(Z.begin());
+  std::vector<WaveFunctionComponent*>::iterator it_end(Z.end());
+  //WARNING: multiplication for PhaseValue is not correct, fix this!!
+  for (; it!=it_end; ++it)
+  {
+    logpsi += (*it)->evaluateLogGuide(*tempP, tempP->G, tempP->L);
+    PhaseValue += (*it)->PhaseValue;
+  }
+  convert(logpsi,LogValue);
+  return LogValue;
+  //return LogValue=real(logpsi);
+}
+
+TrialWaveFunction::RealType TrialWaveFunction::ratioGuide(ParticleSet& P,int iat)
+{
+  ValueType r(1.0);
+  std::vector<WaveFunctionComponent*>::iterator it(Z.begin());
+  std::vector<WaveFunctionComponent*>::iterator it_end(Z.end());
+  for (int ii=V_TIMER; it!=it_end; ++it,ii+=TIMER_SKIP)
+  {
+    myTimers[ii]->start();
+    r *= (*it)->ratioGuide(P,iat);
+    myTimers[ii]->stop();
+  }
+#if defined(QMC_COMPLEX)
+  //return std::exp(evaluateLogAndPhase(r,PhaseValue));
+  RealType logr=evaluateLogAndPhase(r,PhaseDiff);
+  return std::exp(logr);
+#else
+  if (r<0)
+    PhaseDiff=M_PI;
+  //     else PhaseDiff=0.0;
+  return r;
+#endif
+}
+
+
+TrialWaveFunction::RealType TrialWaveFunction::ratioGradGuide(ParticleSet& P
+    ,int iat, GradType& grad_iat )
+{
+  grad_iat=0.0;
+  ValueType r(1.0);
+  for (int i=0, ii=VGL_TIMER; i<Z.size(); ++i, ii+=TIMER_SKIP)
+  {
+    myTimers[ii]->start();
+    r *= Z[i]->ratioGradGuide(P,iat,grad_iat );
+    myTimers[ii]->stop();
+  }
+#if defined(QMC_COMPLEX)
+  RealType logr=evaluateLogAndPhase(r,PhaseDiff);
+  return std::exp(logr);
+#else
+  if (r<0)
+    PhaseDiff=M_PI;
+  return r;
+#endif
+}
+
+
 void TrialWaveFunction::printGL(ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L, std::string tag)
 {
   std::ostringstream o;
