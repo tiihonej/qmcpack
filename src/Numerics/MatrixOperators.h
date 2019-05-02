@@ -332,6 +332,35 @@ inline void product(const Matrix<T>& A, const Matrix<T>& B, Matrix<T>& C, std::v
   }
 }
 
+template<typename T>
+inline T frobenius_norm(const Matrix<T>& A)
+{
+  int nr = A.rows();
+  int nc = A.cols();
+
+  T sum = 0;
+  for(int i=0; i<nr; i++)
+    for(int j=0; j<nc; j++)
+      sum+=A(i,j)*A(i,j);
+  return std::sqrt(sum);
+}
+
+template<typename T>
+inline T frobenius_norm(const Matrix<std::complex<T> >& A)
+{
+  int nr = A.rows();
+  int nc = A.cols();
+
+  T sum = 0;
+  for(int i=0; i<nr; i++)
+    for(int j=0; j<nc; j++)
+    {
+      T a=A(i,j).real();
+      T b=A(i,j).imag();
+      sum+=a*a+b*b;
+    }
+  return std::sqrt(sum);
+}
 //    template<typename T>
 //      inline statis void product(const Matrix<T>& A, const T* restrict x, T* restrict y)
 //      {
