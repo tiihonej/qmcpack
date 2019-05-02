@@ -122,6 +122,8 @@ public:
   using WaveFunctionComponent::ratioGrad;
   using WaveFunctionComponent::restore;
 
+  using WaveFunctionComponent::ratioGuide;
+
   using WaveFunctionComponent::evalGradSource;
   using WaveFunctionComponent::evaluateHessian;
   using WaveFunctionComponent::evaluateRatios;

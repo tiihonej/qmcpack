@@ -67,9 +67,10 @@ void VMCUpdatePbyPGuide::advanceWalker(Walker_t& thisWalker, bool recompute)
         PosType dr;
         if (UseDrift)
         {
-          GradType grad_now = Psi.evalGrad(W, iat);
-          DriftModifier->getDrift(tauovermass, grad_now, dr);
-          dr += sqrttau * deltaR[iat];
+          APP_ABORT("Drift not implemented yet.  Sorry!");
+         // GradType grad_now = Psi.evalGradGuide(W, iat);
+         // DriftModifier->getDrift(tauovermass, grad_now, dr);
+         // dr += sqrttau * deltaR[iat];
         }
         else
         {
@@ -83,17 +84,17 @@ void VMCUpdatePbyPGuide::advanceWalker(Walker_t& thisWalker, bool recompute)
         RealType logGf(1), logGb(1), prob;
         if (UseDrift)
         {
-          GradType grad_new;
-          RealType ratio = Psi.ratioGrad(W, iat, grad_new);
-          prob           = ratio * ratio;
-          logGf          = mhalf * dot(deltaR[iat], deltaR[iat]);
-          DriftModifier->getDrift(tauovermass, grad_new, dr);
-          dr    = W.R[iat] - W.activePos - dr;
-          logGb = -oneover2tau * dot(dr, dr);
+        //  GradType grad_new;
+        //  RealType ratio = Psi.ratioGrad(W, iat, grad_new);
+        //  prob           = ratio * ratio;
+        //  logGf          = mhalf * dot(deltaR[iat], deltaR[iat]);
+        //  DriftModifier->getDrift(tauovermass, grad_new, dr);
+        //  dr    = W.R[iat] - W.activePos - dr;
+        //  logGb = -oneover2tau * dot(dr, dr);
         }
         else
         {
-          RealType ratio = Psi.ratio(W, iat);
+          RealType ratio = Psi.ratioGuide(W, iat);
           prob           = ratio * ratio;
         }
         if (prob >= std::numeric_limits<RealType>::epsilon() && RandomGen() < prob * std::exp(logGb - logGf))
@@ -117,7 +118,13 @@ void VMCUpdatePbyPGuide::advanceWalker(Walker_t& thisWalker, bool recompute)
   myTimers[1]->stop();
   myTimers[0]->start();
   RealType logpsi = Psi.updateBuffer(W, w_buffer, recompute);
+  RealType logpsiguide = Psi.evaluateLogOnlyGuide(W);
+  //app_log()<<" logpsi = "<<logpsi<<" logpsiguide = "<<logpsiguide<<std::endl;
+//  RealType guideweight = std::exp(logpsi-logpsiguide);
+  RealType guideweight=std::exp(2.0*(logpsi-logpsiguide)); 
   W.saveWalker(thisWalker);
+  thisWalker.GuideWeight = guideweight;
+ 
   myTimers[0]->stop();
   // end PbyP moves
   myTimers[2]->start();

@@ -148,6 +148,10 @@ public:
 
   virtual inline ValueType ratio(ParticleSet& P, int iat) { return Dets[getDetID(iat)]->ratio(P, iat); }
 
+  virtual inline ValueType ratioGuide(ParticleSet& P, int iat) { return Dets[getDetID(iat)]->ratioGuide(P, iat); }
+
+  virtual RealType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
+
   virtual WaveFunctionComponentPtr makeClone(ParticleSet& tqp) const;
 
   virtual SPOSetPtr getPhi(int i = 0) { return Dets[i]->getPhi(); }

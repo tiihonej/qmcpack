@@ -397,9 +397,8 @@ TrialWaveFunction::RealType TrialWaveFunction::ratioGrad(ParticleSet& P
 TrialWaveFunction::RealType
 TrialWaveFunction::evaluateLogOnlyGuide(ParticleSet& P)
 {
-  tempP->R=P.R;
-  tempP->L=0.0;
-  tempP->G=0.0;
+  ParticleSet::ParticleGradient_t G = P.G;
+  ParticleSet::ParticleLaplacian_t L = P.L;
   ValueType logpsi(0.0);
   PhaseValue=0.0;
   std::vector<WaveFunctionComponent*>::iterator it(Z.begin());
@@ -407,7 +406,7 @@ TrialWaveFunction::evaluateLogOnlyGuide(ParticleSet& P)
   //WARNING: multiplication for PhaseValue is not correct, fix this!!
   for (; it!=it_end; ++it)
   {
-    logpsi += (*it)->evaluateLogGuide(*tempP, tempP->G, tempP->L);
+    logpsi += (*it)->evaluateLogGuide(P, G, L);
     PhaseValue += (*it)->PhaseValue;
   }
   convert(logpsi,LogValue);

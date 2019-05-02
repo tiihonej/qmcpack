@@ -288,7 +288,7 @@ struct WaveFunctionComponent: public QMCTraits
     return ValueType();
   }
 
-  virtual ValueType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
+  virtual RealType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
   {
     return evaluateLog(P,G,L);
   }

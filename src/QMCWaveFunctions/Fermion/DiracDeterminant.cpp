@@ -33,6 +33,7 @@ DiracDeterminant<DU_TYPE>::DiracDeterminant(SPOSetPtr const spos, int first)
     : DiracDeterminantBase(spos, first), ndelay(1), invRow_id(-1)
 {
   ClassName = "DiracDeterminant";
+  epsilon=0.5;
 }
 
 /** set the index of the first particle in the determinant and reset the size of the determinant
@@ -277,6 +278,60 @@ typename DiracDeterminant<DU_TYPE>::ValueType DiracDeterminant<DU_TYPE>::ratio(P
 }
 
 template<typename DU_TYPE>
+typename DiracDeterminant<DU_TYPE>::ValueType DiracDeterminant<DU_TYPE>::ratioGuide(ParticleSet& P, int iat)
+{
+  UpdateMode             = ORB_PBYP_RATIO;
+  const int WorkingIndex = iat - FirstIndex;
+  SPOVTimer.start();
+  Phi->evaluate(P, iat, psiV);
+  SPOVTimer.stop();
+  RatioTimer.start();
+  // This is an optimization.
+  // check invRow_id against WorkingIndex to see if getInvRow() has been called
+  // This is intended to save redundant compuation in TM1 and TM3
+  if (invRow_id != WorkingIndex)
+  {
+    invRow_id = WorkingIndex;
+    updateEng.getInvRow(psiM, WorkingIndex, invRow);
+  }
+  curRatio = simd::dot(invRow.data(), psiV.data(), invRow.size());
+  RatioTimer.stop();
+
+  //The old guide function value:
+  RealType l2_old = MatrixOperators::frobenius_norm(psiM);
+  //Now we go in and compute the guiding function at the new position.
+  //
+  psiM_temp = psiM;
+
+  int nrows=psiM.size();
+  temp_vec1.resize(nrows);
+  temp_vec2.resize(nrows);
+
+  InverseUpdateByRow(psiM_temp,psiV,temp_vec1,temp_vec2,WorkingIndex,curRatio);
+   
+  RealType l2_new = MatrixOperators::frobenius_norm(psiM_temp);
+
+  RealType Rval_old=( l2_old !=0 ? 1.0/l2_old : 0);
+  RealType Rval_new=( l2_new !=0 ? 1.0/l2_new : 0);
+
+  RealType logG_old = (Rval_old/epsilon-1)*std::log(Rval_old/epsilon);
+  RealType logG_new = (Rval_new/epsilon-1)*std::log(Rval_new/epsilon);
+
+  if(Rval_new > epsilon && Rval_old > epsilon)
+    return curRatio;
+  else if(Rval_new > epsilon && Rval_old <= epsilon)
+    return curRatio*std::exp(-logG_old);
+  else if(Rval_new <= epsilon && Rval_old > epsilon)
+    return curRatio*std::exp(logG_new);
+  else if(Rval_new <= epsilon && Rval_old <= epsilon)
+    return curRatio*std::exp(logG_new-logG_old);
+  else
+    APP_ABORT("ratioGuide:  I shouldn't be here...\n");
+  
+  return curRatio;
+}
+
+template<typename DU_TYPE>
 void DiracDeterminant<DU_TYPE>::evaluateRatios(VirtualParticleSet& VP, std::vector<ValueType>& ratios)
 {
   SPOVTimer.start();
@@ -491,6 +546,43 @@ typename DiracDeterminant<DU_TYPE>::RealType DiracDeterminant<DU_TYPE>::evaluate
       L[iat] += lap - dot(rv, rv);
     }
   }
+  return LogValue;
+}
+template<typename DU_TYPE>
+typename DiracDeterminant<DU_TYPE>::RealType DiracDeterminant<DU_TYPE>::evaluateLogGuide(ParticleSet& P,
+                                                                                    ParticleSet::ParticleGradient_t& G,
+                                                                                    ParticleSet::ParticleLaplacian_t& L)
+{
+  recompute(P);
+  RealType l2 = MatrixOperators::frobenius_norm(psiM);
+  RealType Rval=(l2 !=0 ? 1.0/l2: 0);
+  RealType logGval = (Rval/epsilon-1.0)*std::log(Rval/epsilon);
+  //app_log()<<" epsilon = "<<epsilon<<" l2 = "<<l2<<" Rval="<<Rval<<" logGval="<<logGval<<" LogVal = "<<LogValue<<std::endl; 
+  if(Rval > epsilon)
+    return LogValue;
+  else if (Rval <= epsilon)
+    return LogValue+logGval;
+  else
+    APP_ABORT("evaluateLogGuide..  I shouldn't be here...\n");
+
+/*
+  if (NumPtcls == 1)
+  {
+    ValueType y = psiM(0, 0);
+    GradType rv = y * dpsiM(0, 0);
+    G[FirstIndex] += rv;
+    L[FirstIndex] += y * d2psiM(0, 0) - dot(rv, rv);
+  }
+  else
+  {
+    for (int i = 0, iat = FirstIndex; i < NumPtcls; i++, iat++)
+    {
+      mGradType rv   = simd::dot(psiM[i], dpsiM[i], NumOrbitals);
+      mValueType lap = simd::dot(psiM[i], d2psiM[i], NumOrbitals);
+      G[iat] += rv;
+      L[iat] += lap - dot(rv, rv);
+    }
+  }*/
   return LogValue;
 }
 
