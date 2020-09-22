@@ -117,6 +117,9 @@ struct Walker
   FullPrecRealType Weight;
   ///Weight of the walker
   RealType ReleasedNodeWeight;
+  /// \Psi_T / \Psi_G, where \Psi_G is the function used for VMC and DMC dynamics.
+  // This should take the place of ReleasedNodeWeight, after a refactor.
+  RealType GuideWeight;
   /** Number of copies for branching
    *
    * When Multiplicity = 0, this walker will be destroyed.
@@ -196,6 +199,7 @@ struct Walker
     Generation         = 0;
     Age                = 0;
     Weight             = 1.0;
+    GuideWeight        = 1.0;
     Multiplicity       = 1.0;
     ReleasedNodeWeight = 1.0;
     ReleasedNodeAge    = 0;
@@ -287,6 +291,7 @@ struct Walker
     Generation         = a.Generation;
     Age                = a.Age;
     Weight             = a.Weight;
+    GuideWeight        = a.GuideWeight;
     Multiplicity       = a.Multiplicity;
     ReleasedNodeWeight = a.ReleasedNodeWeight;
     ReleasedNodeAge    = a.ReleasedNodeAge;
@@ -428,6 +433,7 @@ struct Walker
     DataSet.add(ParentID);
     DataSet.add(Generation);
     DataSet.add(Age);
+    DataSet.add(GuideWeight);
     DataSet.add(ReleasedNodeAge);
     DataSet.add(ReleasedNodeWeight);
     // vectors
@@ -459,7 +465,7 @@ struct Walker
   void copyFromBuffer()
   {
     DataSet.rewind();
-    DataSet >> ID >> ParentID >> Generation >> Age >> ReleasedNodeAge >> ReleasedNodeWeight;
+    DataSet >> ID >> ParentID >> Generation >> Age >> GuideWeight >> ReleasedNodeAge >> ReleasedNodeWeight;
     // vectors
     DataSet.get(R.first_address(), R.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)
@@ -508,7 +514,7 @@ struct Walker
   void updateBuffer()
   {
     DataSet.rewind();
-    DataSet << ID << ParentID << Generation << Age << ReleasedNodeAge << ReleasedNodeWeight;
+    DataSet << ID << ParentID << Generation << Age << GuideWeight << ReleasedNodeAge << ReleasedNodeWeight;
     // vectors
     DataSet.put(R.first_address(), R.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)

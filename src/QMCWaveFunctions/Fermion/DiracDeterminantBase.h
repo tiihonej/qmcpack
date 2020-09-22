@@ -130,6 +130,8 @@ public:
   using WaveFunctionComponent::restore;
   using WaveFunctionComponent::mw_restore;
 
+  using WaveFunctionComponent::ratioGuide;
+
   using WaveFunctionComponent::evalGradSource;
   using WaveFunctionComponent::evaluateHessian;
   using WaveFunctionComponent::evaluateRatios;

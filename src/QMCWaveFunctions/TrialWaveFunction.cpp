@@ -528,6 +528,84 @@ void TrialWaveFunction::flex_ratioGrad(const RefVector<TrialWaveFunction>& wf_li
     ratios[0] = wf_list[0].get().ratioGrad(p_list[0], iat, grad_new[0]);
 }
 
+TrialWaveFunction::RealType
+TrialWaveFunction::evaluateLogOnlyGuide(ParticleSet& P)
+{
+  ParticleSet::ParticleGradient_t G = P.G;
+  ParticleSet::ParticleLaplacian_t L = P.L;
+  ValueType logpsi(0.0);
+  PhaseValue=0.0;
+  std::vector<WaveFunctionComponent*>::iterator it(Z.begin());
+  std::vector<WaveFunctionComponent*>::iterator it_end(Z.end());
+  //WARNING: multiplication for PhaseValue is not correct, fix this!!
+  for (; it!=it_end; ++it)
+  {
+    logpsi += (*it)->evaluateLogGuide(P, G, L);
+    PhaseValue += (*it)->PhaseValue;
+  }
+  convert(logpsi,LogValue);
+  return LogValue;
+  //return LogValue=real(logpsi);
+}
+
+TrialWaveFunction::RealType TrialWaveFunction::ratioGuide(ParticleSet& P,int iat)
+{
+  ValueType r(1.0);
+  std::vector<WaveFunctionComponent*>::iterator it(Z.begin());
+  std::vector<WaveFunctionComponent*>::iterator it_end(Z.end());
+  for (int ii=V_TIMER; it!=it_end; ++it,ii+=TIMER_SKIP)
+  {
+    myTimers[ii]->start();
+    r *= (*it)->ratioGuide(P,iat);
+    myTimers[ii]->stop();
+  }
+#if defined(QMC_COMPLEX)
+  //return std::exp(evaluateLogAndPhase(r,PhaseValue));
+  RealType logr=evaluateLogAndPhase(r,PhaseDiff);
+  return std::exp(logr);
+#else
+  if (r<0)
+    PhaseDiff=M_PI;
+  //     else PhaseDiff=0.0;
+  return r;
+#endif
+}
+
+
+TrialWaveFunction::RealType TrialWaveFunction::ratioGradGuide(ParticleSet& P
+    ,int iat, GradType& grad_iat )
+{
+  grad_iat=0.0;
+  ValueType r(1.0);
+  for (int i=0, ii=VGL_TIMER; i<Z.size(); ++i, ii+=TIMER_SKIP)
+  {
+    myTimers[ii]->start();
+    r *= Z[i]->ratioGradGuide(P,iat,grad_iat );
+    myTimers[ii]->stop();
+  }
+#if defined(QMC_COMPLEX)
+  RealType logr=evaluateLogAndPhase(r,PhaseDiff);
+  return std::exp(logr);
+#else
+  if (r<0)
+    PhaseDiff=M_PI;
+  return r;
+#endif
+}
+
+TrialWaveFunction::GradType TrialWaveFunction::evalGradGuide(ParticleSet& P,int iat)
+{
+  GradType grad_iat;
+  for (int i=0, ii=VGL_TIMER; i<Z.size(); ++i, ii+=TIMER_SKIP)
+  {
+    myTimers[ii]->start();
+    grad_iat += Z[i]->evalGradGuide(P,iat);
+    myTimers[ii]->stop();
+  }
+  return grad_iat;
+}
+
+
 void TrialWaveFunction::printGL(ParticleSet::ParticleGradient_t& G,
                                 ParticleSet::ParticleLaplacian_t& L,
                                 std::string tag)

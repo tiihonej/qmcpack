@@ -244,6 +244,12 @@ public:
   /* flexible batched version of completeUpdates.  */
   void flex_completeUpdates(const std::vector<TrialWaveFunction*>& WF_list) const;
 
+  //Functions related to VMC via a guiding function:
+  RealType ratioGuide(ParticleSet& P, int iat);
+  RealType ratioGradGuide(ParticleSet& P, int iat, GradType& grad_iat);
+  GradType evalGradGuide(ParticleSet& P, int iat);
+  RealType evaluateLogOnlyGuide(ParticleSet& P);
+
   /** register all the wavefunction components in buffer.
    *  See WaveFunctionComponent::registerData for more detail */
   void registerData(ParticleSet& P, WFBufferType& buf);

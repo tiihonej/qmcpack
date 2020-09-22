@@ -361,6 +361,26 @@ struct WaveFunctionComponent : public QMCTraits
       ratios[iw] = WFC_list[iw].get().ratioGrad(P_list[iw], iat, grad_new[iw]);
   }
 
+  virtual RealType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
+  {
+    return evaluateLog(P,G,L);
+  }
+
+  virtual ValueType ratioGuide(ParticleSet& P, int iat)
+  {
+    return ratio(P,iat);
+  }
+
+  virtual ValueType ratioGradGuide(ParticleSet& P, int iat, GradType& grad_iat)
+  {
+    return ratioGrad(P,iat,grad_iat);
+  }
+
+  virtual GradType evalGradGuide(ParticleSet& P, int iat)
+  {
+    return evalGrad(P,iat);
+  }
+
   /** a move for iat-th particle is accepted. Update the current content.
    * @param P target ParticleSet
    * @param iat index of the particle whose new position was proposed
