@@ -33,7 +33,7 @@ DiracDeterminant<DU_TYPE>::DiracDeterminant(SPOSetPtr const spos, int first)
     : DiracDeterminantBase(spos, first), ndelay(1), invRow_id(-1)
 {
   ClassName = "DiracDeterminant";
-  epsilon=0.5;
+  epsilon=0.002;
 }
 
 /** set the index of the first particle in the determinant and reset the size of the determinant
