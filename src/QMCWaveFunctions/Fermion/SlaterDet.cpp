@@ -131,6 +131,23 @@ SlaterDet::RealType SlaterDet::evaluateLog(ParticleSet& P,
   }
   return LogValue;
 }
+SlaterDet::RealType SlaterDet::evaluateLogGuide(ParticleSet& P,
+                                           ParticleSet::ParticleGradient_t& G,
+                                           ParticleSet::ParticleLaplacian_t& L)
+{
+  //ValueType psi = 1.0;
+  //for(int i=0; i<Dets.size(); i++) psi *= Dets[i]->evaluate(P,G,L);
+  //return LogValue = evaluateLogAndPhase(psi,PhaseValue);
+  LogValue   = 0.0;
+  PhaseValue = 0.0;
+  for (int i = 0; i < Dets.size(); ++i)
+  {
+    LogValue += Dets[i]->evaluateLogGuide(P, G, L);
+    PhaseValue += Dets[i]->PhaseValue;
+  }
+  return LogValue;
+}
+
 
 void SlaterDet::mw_evaluateLog(const std::vector<WaveFunctionComponent*>& WFC_list,
                                const std::vector<ParticleSet*>& P_list,

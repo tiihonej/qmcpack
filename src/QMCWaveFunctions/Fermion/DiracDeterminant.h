@@ -116,6 +116,8 @@ public:
                           TinyVector<ParticleSet::ParticleGradient_t, OHMMS_DIM>& grad_grad,
                           TinyVector<ParticleSet::ParticleLaplacian_t, OHMMS_DIM>& lapl_grad) override;
 
+  ValueType ratioGuide(ParticleSet& P, int iat);
+  RealType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
   /** move was accepted, update the real container
    */
   void acceptMove(ParticleSet& P, int iat) override;
@@ -200,6 +202,9 @@ public:
   /// the row of up-to-date inverse matrix
   ValueVector_t invRow;
 
+  //Temporary working vectors for guiding function inverse stuff.
+  ValueVector_t temp_vec1;
+  ValueVector_t temp_vec2;
   /** row id correspond to the up-to-date invRow. [0 norb), invRow is ready; -1, invRow is not valid.
    *  This id is set after calling getInvRow indicating invRow has been prepared for the invRow_id row
    *  ratioGrad checks if invRow_id is consistent. If not, invRow needs to be recomputed.
@@ -220,6 +225,9 @@ private:
 
   /// internal function computing ratio and gradients after computing the SPOs, used by ratioGrad.
   ValueType ratioGrad_compute(int iat, GradType& grad_iat);
+
+  //cutoff for guiding function
+  double epsilon;
 };
 
 
