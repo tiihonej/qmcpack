@@ -436,7 +436,11 @@ void EstimatorManagerBase::accumulate(MCWalkerConfiguration& W,
                                       MCWalkerConfiguration::iterator it,
                                       MCWalkerConfiguration::iterator it_end)
 {
-  BlockWeight += it_end - it;
+  //BlockWeight += it_end - it;
+  for (MCWalkerConfiguration::iterator i=it; i!=it_end; i++) {
+    const MCWalkerConfiguration::Walker_t& awalker = **i;
+    BlockWeight += awalker.Weight*awalker.GuideWeight;
+ }
   RealType norm = 1.0 / W.getGlobalNumWalkers();
   for (int i = 0; i < Estimators.size(); i++)
     Estimators[i]->accumulate(W, it, it_end, norm);

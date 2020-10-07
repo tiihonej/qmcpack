@@ -54,7 +54,7 @@ public:
   inline void accumulate(const Walker_t& awalker, RealType wgt)
   {
     const RealType* restrict ePtr = awalker.getPropertyBase();
-    RealType wwght                = wgt * awalker.Weight;
+    RealType wwght                = wgt * awalker.Weight * awalker.GuideWeight;
     scalars[0](ePtr[LOCALENERGY], wwght);
     scalars[1](ePtr[LOCALENERGY] * ePtr[LOCALENERGY], wwght);
     scalars[2](ePtr[LOCALPOTENTIAL], wwght);
