@@ -290,9 +290,7 @@ void EstimatorManagerBase::stopBlock(RealType accept, bool collectall)
   for (int i = 0; i < Estimators.size(); i++)
     Estimators[i]->takeBlockAverage(AverageCache.begin(), SquaredAverageCache.begin());
   if (Collectables)
-  {
     Collectables->takeBlockAverage(AverageCache.begin(), SquaredAverageCache.begin());
-  }
   if (collectall)
     collectBlockAverages();
 }
@@ -392,10 +390,12 @@ void EstimatorManagerBase::collectBlockAverages()
       copy(cur, cur + n1, AverageCache.begin());
       copy(cur + n1, cur + n2, SquaredAverageCache.begin());
       copy(cur + n2, cur + n3, PropertyCache.begin());
-      RealType nth = 1.0 / static_cast<RealType>(myComm->size());
+      //do not weight weightInd
+      //RealType nth = 1.0 / static_cast<RealType>(myComm->size());
+      // Correct weight in this scheme
+      RealType nth = 1.0 / PropertyCache[weightInd];
       AverageCache *= nth;
       SquaredAverageCache *= nth;
-      //do not weight weightInd
       for (int i = 1; i < PropertyCache.size(); i++)
         PropertyCache[i] *= nth;
     }
@@ -439,8 +439,8 @@ void EstimatorManagerBase::accumulate(MCWalkerConfiguration& W,
   //BlockWeight += it_end - it;
   for (MCWalkerConfiguration::iterator i=it; i!=it_end; i++) {
     const MCWalkerConfiguration::Walker_t& awalker = **i;
-    BlockWeight += awalker.Weight*awalker.GuideWeight;
- }
+    BlockWeight += awalker.Weight*awalker.GuideWeight/static_cast<RealType>(myComm->size());
+  }
   RealType norm = 1.0 / W.getGlobalNumWalkers();
   for (int i = 0; i < Estimators.size(); i++)
     Estimators[i]->accumulate(W, it, it_end, norm);

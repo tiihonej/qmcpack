@@ -100,8 +100,10 @@ struct ScalarEstimatorBase
     first_sq += FirstIndex;
     for (int i = 0; i < scalars.size(); i++)
     {
-      *first++         = scalars[i].mean();
-      *first_sq++      = scalars[i].mean2();
+      //*first++         = scalars[i].mean();
+      //*first_sq++      = scalars[i].mean2();
+      *first++         = scalars[i].result();
+      *first_sq++      = scalars[i].result2();
       scalars_saved[i] = scalars[i]; //save current block
       scalars[i].clear();
     }
