@@ -14,6 +14,7 @@
 
 
 #include "QMCHamiltonians/ECPComponentBuilder.h"
+#include "QMCHamiltonians/NonLocalECPComponent.h"
 #include "Numerics/OneDimCubicSpline.h"
 #include "OhmmsData/AttributeSet.h"
 #include "Utilities/SimpleParser.h"
@@ -55,6 +56,7 @@ void ECPComponentBuilder::buildSemiLocalAndLocal(std::vector<xmlNodePtr>& semiPt
   aAttrib.add(nup, "npots-up");
   aAttrib.add(Llocal, "l-local");
   aAttrib.add(Nrule, "nrule");
+  aAttrib.add(Srule, "srule");
   aAttrib.add(nso, "npots-so");
 
   xmlNodePtr cur_semilocal = semiPtr[0];
@@ -81,12 +83,12 @@ void ECPComponentBuilder::buildSemiLocalAndLocal(std::vector<xmlNodePtr>& semiPt
   }
   // We cannot construct the potentials as we construct them since
   // we may not know which one is local yet.
-  
+
   std::vector<int> angList;
   std::vector<int> angListSO; //For spin-orbit, if it exists
   std::vector<xmlNodePtr> vpsPtr;
   std::vector<xmlNodePtr> vpsoPtr; //For spin-orbit, if it exists.
-  Lmax = -1;
+  Lmax   = -1;
   LmaxSO = -1;
   // Now read vps sections
   xmlNodePtr cur_vps = cur_semilocal->children;
@@ -107,7 +109,7 @@ void ECPComponentBuilder::buildSemiLocalAndLocal(std::vector<xmlNodePtr>& semiPt
       vpsPtr.push_back(cur_vps);
       Lmax = std::max(Lmax, l); //count the maximum L
     }
-    else if (vname== "vps_so") //This accumulates the spin-orbit corrections, if defined.
+    else if (vname == "vps_so") //This accumulates the spin-orbit corrections, if defined.
     {
       OhmmsAttributeSet aAttrib;
       std::string lstr("s");
@@ -131,13 +133,13 @@ void ECPComponentBuilder::buildSemiLocalAndLocal(std::vector<xmlNodePtr>& semiPt
     app_log() << "    Only one vps is found. Set the local component=" << Lmax << std::endl;
   }
 
-  if (angListSO.size()!=nso)
+  if (angListSO.size() != nso)
   {
     std::stringstream ssout;
-    ssout<<"Error. npots-so="<<angListSO.size()<<" while declared number of SO channels is "<<nso<<std::endl;
+    ssout << "Error. npots-so=" << angListSO.size() << " while declared number of SO channels is " << nso << std::endl;
     std::string outstring("");
-    outstring=ssout.str();
- 
+    outstring = ssout.str();
+
     APP_ABORT(outstring.c_str());
   }
   int npts = grid_global->size();
@@ -187,12 +189,11 @@ void ECPComponentBuilder::buildSemiLocalAndLocal(std::vector<xmlNodePtr>& semiPt
     //copy the numerical data with the correct map
     //So this is weird, but I feel like l should be the proper index for vnnso,
     //with angListSO[l] being the actual angular momentum channel referred to by l.
-    //This differs from the parsing of the nonlocal pseudopotential piece, but whatever. 
+    //This differs from the parsing of the nonlocal pseudopotential piece, but whatever.
     copy(vtso.begin(), vtso.end(), vnnso[l]);
   }
 
 
-  
   ////rather stupid to do this but necessary
   //vector<RealType> temp(npts);
   //for(int i=0; i<npts; i++) temp[i]=grid_global->r(i);
@@ -202,15 +203,22 @@ void ECPComponentBuilder::buildSemiLocalAndLocal(std::vector<xmlNodePtr>& semiPt
     for (int i = 0; i < vnn.rows(); i++)
       for (int j = 0; j < npts; j++)
         vnn[i][j] *= grid_global->r(j);
+    for (int i = 0; i < vnnso.rows(); i++)
+      for (int j = 0; j < npts; j++)
+        vnnso[i][j] *= grid_global->r(j);
   }
   app_log() << "   Number of angular momentum channels " << angList.size() << std::endl;
   app_log() << "   Maximum angular momentum channel " << Lmax << std::endl;
   doBreakUp(angList, vnn, rmax, Vprefactor);
 
   //If any spinorbit terms are found...
-  if(nso>0)
-    buildSO(angListSO,vnnso,rmax,1.0);
-
+  if (nso > 0)
+    buildSO(angListSO, vnnso, rmax, 1.0);
+  else
+  {
+    //No SO channels found. Delete pp_so
+    pp_so.reset();
+  }
 }
 
 //Most of this is copied directly from doBreakUp, but is separated to prevent from cluttering doBreakUp.
@@ -253,7 +261,7 @@ void ECPComponentBuilder::buildSO(const std::vector<int>& angList,
   std::vector<mRealType> newPin(ngIn);
   for (int l = 0; l < angList.size(); l++)
   {
-    const mRealType* restrict vp    = vnnso[l];
+    const mRealType* restrict vp = vnnso[l];
     for (int i = 0; i < ngIn; i++)
       newPin[i] = Vprefactor * vp[i];
 
@@ -262,16 +270,16 @@ void ECPComponentBuilder::buildSO(const std::vector<int>& angList,
     for (int i = 1; i < ng - 1; i++)
     {
       mRealType r = d * i;
-      newP[i]     = infunc.splint(r);
+      newP[i]     = infunc.splint(r) / r;
     }
     newP[0]                  = newP[1];
     newP[ng - 1]             = 0.0;
     RadialPotentialType* app = new RadialPotentialType(agrid, newP);
     app->spline();
-    pp_so->add(angList[l], app); 
+    pp_so->add(angList[l], app);
   }
-
-
+  NumSO       = angList.size();
+  pp_so->Rmax = rmax;
 }
 
 bool ECPComponentBuilder::parseCasino(const std::string& fname, xmlNodePtr cur)
@@ -293,8 +301,8 @@ bool ECPComponentBuilder::parseCasino(const std::string& fname, xmlNodePtr cur)
     app_error() << "Could not open file " << fname << std::endl;
     APP_ABORT("ECPComponentBuilder::parseCasino");
   }
-  if (pp_nonloc == 0)
-    pp_nonloc = new NonLocalECPComponent;
+  if (!pp_nonloc)
+    pp_nonloc = std::make_unique<NonLocalECPComponent>();
   OhmmsAsciiParser aParser;
   int npts = 0, idummy;
   std::string eunits("rydberg");
@@ -454,8 +462,7 @@ void ECPComponentBuilder::doBreakUp(const std::vector<int>& angList,
   else
   {
     //only one component, remove non-local potentials
-    delete pp_nonloc;
-    pp_nonloc = 0;
+    pp_nonloc.reset();
   }
   {
     // Spline local potential on original grid
@@ -482,7 +489,7 @@ void ECPComponentBuilder::doBreakUp(const std::vector<int>& angList,
     }
     newPloc[0]        = 0.0;
     newPloc[nloc - 1] = 1.0;
-    pp_loc            = new RadialPotentialType(grid_loc, newPloc);
+    pp_loc            = std::make_unique<RadialPotentialType>(grid_loc, newPloc);
     pp_loc->spline(0, dy0, nloc - 1, 0.0);
     // for (double r=0.0; r<3.50001; r+=0.001)
     //   fprintf (stderr, "%10.5f %10.5f\n", r, pp_loc->splint(r));

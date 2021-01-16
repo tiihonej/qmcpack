@@ -13,9 +13,9 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCWaveFunctions/Jastrow/kSpaceJastrowBuilder.h"
+#include "kSpaceJastrowBuilder.h"
 #include "OhmmsData/AttributeSet.h"
-#include <qmc_common.h>
+#include "Utilities/qmc_common.h"
 
 namespace qmcplusplus
 {
@@ -37,7 +37,7 @@ inline bool putContent2(std::vector<T>& a, xmlNodePtr cur)
 }
 
 
-bool kSpaceJastrowBuilder::put(xmlNodePtr cur)
+WaveFunctionComponent* kSpaceJastrowBuilder::buildComponent(xmlNodePtr cur)
 {
   xmlNodePtr kids = cur->xmlChildrenNode;
   kSpaceJastrow::SymmetryType oneBodySymm, twoBodySymm;
@@ -140,8 +140,7 @@ bool kSpaceJastrowBuilder::put(xmlNodePtr cur)
   jastrow->setCoefficients(oneBodyCoefs, twoBodyCoefs);
   if (qmc_common.io_node) outputJastrow(jastrow);
   //jastrow->addOptimizables(targetPsi.VarList);
-  targetPsi.addComponent(jastrow, "kSpace");
-  return true;
+  return jastrow;
 }
 
 
@@ -149,7 +148,7 @@ void
 kSpaceJastrowBuilder::outputJastrow(kSpaceJastrow* jastrow)
 {
   char fname[32];
-  int taskid = targetPsi.is_manager() ? targetPsi.getGroupID():-1;
+  int taskid = is_manager() ? getGroupID():-1;
   std::ofstream fout;
 
   // output one-body jastrow

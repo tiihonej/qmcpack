@@ -15,17 +15,17 @@
  * Using only einspine SPO part + Jastrow as a wavefunction.
  */
 #include <Configuration.h>
-#include <Utilities/PrimeNumberSet.h>
-#include <Utilities/Timer.h>
-#include <random/random.hpp>
-#include <mpi/collectives.h>
+#include "Utilities/PrimeNumberSet.h"
+#include "Utilities/Timer.h"
+#include "random.hpp"
+#include "mpi/collectives.h"
 #include <getopt.h>
 using namespace std;
-#include <simd/allocator.hpp>
-#include <simd/simd.hpp>
-#include <simd/algorithm.hpp>
-#include <QMCWaveFunctions/Fermion/DiracMatrix.h>
-#include <QMCWaveFunctions/Fermion/DelayedUpdate.h>
+#include "CPU/SIMD/aligned_allocator.hpp"
+#include "CPU/SIMD/simd.hpp"
+#include "CPU/SIMD/algorithm.hpp"
+#include "QMCWaveFunctions/Fermion/DiracMatrix.h"
+#include "QMCWaveFunctions/Fermion/DelayedUpdate.h"
 using namespace qmcplusplus;
 
 template<typename RNG, typename T>
@@ -129,8 +129,8 @@ int main(int argc, char** argv)
     delayedEng.resize(nels,delay);
 
     generate(random_th,psiM.data(),nels*nels);
-    RealType log, phase;
-    detEng.invert_transpose(psiM, psiM_inv, log, phase);
+    std::complex<RealType> logdet;
+    detEng.invert_transpose(psiM, psiM_inv, logdet);
 
     if(debug)
     {

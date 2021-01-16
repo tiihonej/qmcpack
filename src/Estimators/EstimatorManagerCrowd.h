@@ -19,8 +19,9 @@
 #include "Utilities/PooledData.h"
 #include "Message/Communicate.h"
 #include "Estimators/ScalarEstimatorBase.h"
-#include "Estimators/EstimatorManagerBase.h"
+#include "Estimators/EstimatorManagerNew.h"
 #include "Estimators/EstimatorManagerInterface.h"
+#include "Particle/Walker.h"
 #include "OhmmsPETE/OhmmsVector.h"
 #include "OhmmsData/HDFAttribIO.h"
 
@@ -30,17 +31,18 @@ class MCWalkerConifugration;
 class QMCHamiltonian;
 class CollectablesEstimator;
 
-/** Thread local portion of EstimatorManager
+/** Thread local estimator container/accumulator
  *
  *  Stepping away from the CloneManger + clones design which creates EstimatorManagers
  *  Which operate differently based on internal switches.
+ *  
+ *  see EstimatorManagerNew.h for full description of the new design.
  */
 class EstimatorManagerCrowd : public EstimatorManagerInterface
 {
 public:
-  using MCPWalker = MCPopulation::MCPWalker;
-  //enum { WEIGHT_INDEX=0, BLOCK_CPU_INDEX, ACCEPT_RATIO_INDEX, TOTAL_INDEX};
-
+  using MCPWalker = Walker<QMCTraits, PtclOnLatticeTraits>;
+  
   ///name of the primary estimator name
   std::string MainEstimatorName;
   ///the root file name
@@ -49,11 +51,21 @@ public:
   TinyVector<RealType, 4> RefEnergy;
   ///default constructor
   EstimatorManagerCrowd() = delete;
-  ///copy constructor
-  EstimatorManagerCrowd(EstimatorManagerBase& em);
+  /** EstimatorManagerCrowd are always spawn of an EstimatorManagerNew
+   *
+   *  This coupling should be removed.
+   */
+  EstimatorManagerCrowd(EstimatorManagerNew& em);
+
   ///destructor
   virtual ~EstimatorManagerCrowd(){};
 
+  /** Should be removed from the API
+   *
+   *  This was necessary because the legacy code just clones EstimatorManager for
+   *  each walker but only the first one still manages the others are
+   *  just estimator containers.
+   */
   inline bool is_manager() const { return false; }
 
   ///return the number of ScalarEstimators
@@ -76,7 +88,7 @@ public:
   /** start  a block
    * @param steps number of steps in a block
    */
-  void startBlock(int steps){ block_weight_ = 0.0;};
+  void startBlock(int steps);
 
   void stopBlock();
 
@@ -86,19 +98,12 @@ public:
       scalar_estimators_[i]->setNumberOfBlocks(blocks);
   }
 
-  void accumulate(int global_walkers, RefVector<MCPWalker>& walkers, RefVector<ParticleSet>& psets)
-  {
-    block_weight_ += walkers.size();
-    RealType norm             = 1.0 / global_walkers;
-    int num_scalar_estimators = scalar_estimators_.size();
-    // This seems like it should really be a pset per walker but so far its just used for
-    // things that should be a POD argument
-    for (int i = 0; i < num_scalar_estimators; ++i)
-      scalar_estimators_[i]->accumulate(global_walkers, walkers, norm);  
-  }
+  void accumulate(int global_walkers, RefVector<MCPWalker>& walkers, RefVector<ParticleSet>& psets);
 
   RefVector<EstimatorType> get_scalar_estimators() { return convertPtrToRefVector(scalar_estimators_); }
+  RefVector<qmcplusplus::OperatorEstBase> get_operator_estimators() { return convertUPtrToRefVector(operator_ests_); }
   RealType get_block_weight() const { return block_weight_; }
+  double get_cpu_block_time() const { return cpu_block_time_; }
 
 protected:
   ///use bitset to handle options
@@ -154,9 +159,12 @@ protected:
   ///estimators of simple scalars
   std::vector<EstimatorType*> scalar_estimators_;
 
-  Timer MyTimer;
-
+  std::vector<std::unique_ptr<OperatorEstBase>> operator_ests_;
 private:
+  // This is needed for "efficiency" measure
+  Timer crowd_estimator_timer_;
+  double cpu_block_time_ = 0;
+
   ///number of maximum data for a scalar.dat
   int max4ascii;
   ///collect data and write

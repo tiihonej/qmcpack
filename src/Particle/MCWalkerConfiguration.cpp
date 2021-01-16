@@ -17,7 +17,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "Particle/MCWalkerConfiguration.h"
+#include "MCWalkerConfiguration.h"
 #include "Particle/DistanceTableData.h"
 #include "ParticleBase/RandomSeqGenerator.h"
 #include "Message/Communicate.h"
@@ -25,9 +25,9 @@
 #include "Utilities/IteratorUtility.h"
 #include "LongRange/StructFact.h"
 #include "Particle/HDFWalkerOutput.h"
-#include "QMCDrivers/QMCDriver.h"
-#include <io/hdf_hyperslab.h>
-#include "HDFVersion.h"
+#include "Particle/MCSample.h"
+#include "hdf/hdf_hyperslab.h"
+#include "hdf/HDFVersion.h"
 #include <map>
 
 #ifdef QMC_CUDA
@@ -36,75 +36,21 @@
 
 namespace qmcplusplus
 {
-/** store minimum Walker data for the next section
- */
-struct MCSample
-{
-  typedef ParticleSet::Walker_t Walker_t;
-
-  ParticleSet::ParticlePos_t R;
-  ParticleSet::ParticleGradient_t G;
-  ParticleSet::ParticleLaplacian_t L;
-  ParticleSet::RealType LogPsi, Sign, PE, KE;
-
-  inline MCSample(const Walker_t& w) : R(w.R), G(w.G), L(w.L)
-  {
-    LogPsi = w.Properties(LOGPSI);
-    Sign   = w.Properties(SIGN);
-    PE     = w.Properties(LOCALPOTENTIAL);
-    KE     = w.Properties(LOCALENERGY) - PE;
-  }
-
-  inline MCSample(int n)
-  {
-    R.resize(n);
-    G.resize(n);
-    L.resize(n);
-  }
-
-  inline void put(const Walker_t& w)
-  {
-    R      = w.R;
-    G      = w.G;
-    L      = w.L;
-    LogPsi = w.Properties(LOGPSI);
-    Sign   = w.Properties(SIGN);
-    PE     = w.Properties(LOCALPOTENTIAL);
-    KE     = w.Properties(LOCALENERGY) - PE;
-  }
-
-  inline void get(Walker_t& w) const
-  {
-    w.R                          = R;
-    w.G                          = G;
-    w.L                          = L;
-    w.Properties(LOGPSI)         = LogPsi;
-    w.Properties(SIGN)           = Sign;
-    w.Properties(LOCALPOTENTIAL) = PE;
-    w.Properties(LOCALENERGY)    = PE + KE;
-  }
-};
-
-MCWalkerConfiguration::MCWalkerConfiguration()
-    : OwnWalkers(true),
-      ReadyForPbyP(false),
-      UpdateMode(Update_Walker),
-      Polymer(0),
-
-      MaxSamples(10),
-      CurSampleCount(0),
-      GlobalNumWalkers(0),
-      reptile(0)
+MCWalkerConfiguration::MCWalkerConfiguration(const DynamicCoordinateKind kind)
+    : ParticleSet(kind),
 #ifdef QMC_CUDA
-      ,
       RList_GPU("MCWalkerConfiguration::RList_GPU"),
       GradList_GPU("MCWalkerConfiguration::GradList_GPU"),
       LapList_GPU("MCWalkerConfiguration::LapList_GPU"),
       Rnew_GPU("MCWalkerConfiguration::Rnew_GPU"),
       NLlist_GPU("MCWalkerConfiguration::NLlist_GPU"),
+      iatList_GPU("iatList_GPU"),
       AcceptList_GPU("MCWalkerConfiguration::AcceptList_GPU"),
-      iatList_GPU("iatList_GPU")
 #endif
+      ReadyForPbyP(false),
+      UpdateMode(Update_Walker),
+      reptile(0),
+      Polymer(0)
 {
   //move to ParticleSet
   //initPropertyList();
@@ -112,77 +58,38 @@ MCWalkerConfiguration::MCWalkerConfiguration()
 
 MCWalkerConfiguration::MCWalkerConfiguration(const MCWalkerConfiguration& mcw)
     : ParticleSet(mcw),
-      OwnWalkers(true),
-      GlobalNumWalkers(mcw.GlobalNumWalkers),
-      UpdateMode(Update_Walker),
-      ReadyForPbyP(false),
-      Polymer(0),
-      MaxSamples(mcw.MaxSamples),
-      CurSampleCount(0)
 #ifdef QMC_CUDA
-      ,
       RList_GPU("MCWalkerConfiguration::RList_GPU"),
       GradList_GPU("MCWalkerConfiguration::GradList_GPU"),
       LapList_GPU("MCWalkerConfiguration::LapList_GPU"),
       Rnew_GPU("MCWalkerConfiguration::Rnew_GPU"),
       NLlist_GPU("MCWalkerConfiguration::NLlist_GPU"),
+      iatList_GPU("iatList_GPU"),
       AcceptList_GPU("MCWalkerConfiguration::AcceptList_GPU"),
-      iatList_GPU("iatList_GPU")
 #endif
+      ReadyForPbyP(false),
+      UpdateMode(Update_Walker),
+      Polymer(0)
 {
+  samples.clearEnsemble();
+  samples.setMaxSamples(mcw.getMaxSamples());
   GlobalNumWalkers = mcw.GlobalNumWalkers;
   WalkerOffsets    = mcw.WalkerOffsets;
   Properties       = mcw.Properties;
   //initPropertyList();
 }
 
-///default destructor
-MCWalkerConfiguration::~MCWalkerConfiguration()
-{
-  if (OwnWalkers)
-    destroyWalkers(WalkerList.begin(), WalkerList.end());
-}
-
-
 void MCWalkerConfiguration::createWalkers(int n)
 {
-  if (WalkerList.empty())
-  {
-    while (n)
+  const int old_nw = getActiveWalkers();
+  WalkerConfigurations::createWalkers(n, TotalNum);
+  // no pre-existing walkers, need to initialized based on particleset.
+  if (old_nw == 0)
+    for (auto* awalker : WalkerList)
     {
-      Walker_t* awalker = new Walker_t(TotalNum);
-      awalker->R        = R;
-      WalkerList.push_back(awalker);
-      --n;
+      awalker->R     = R;
+      awalker->spins = spins;
     }
-  }
-  else
-  {
-    if (WalkerList.size() >= n)
-    {
-      int iw = WalkerList.size(); //copy from the back
-      for (int i = 0; i < n; ++i)
-      {
-        WalkerList.push_back(new Walker_t(*WalkerList[--iw]));
-      }
-    }
-    else
-    {
-      int nc  = n / WalkerList.size();
-      int nw0 = WalkerList.size();
-      for (int iw = 0; iw < nw0; ++iw)
-      {
-        for (int ic = 0; ic < nc; ++ic)
-          WalkerList.push_back(new Walker_t(*WalkerList[iw]));
-      }
-      n -= nc * nw0;
-      while (n > 0)
-      {
-        WalkerList.push_back(new Walker_t(*WalkerList[--nw0]));
-        --n;
-      }
-    }
-  }
   resizeWalkerHistories();
 }
 
@@ -191,106 +98,16 @@ void MCWalkerConfiguration::resize(int numWalkers, int numPtcls)
 {
   if (TotalNum && WalkerList.size())
     app_warning() << "MCWalkerConfiguration::resize cleans up the walker list." << std::endl;
+  const int old_nw = getActiveWalkers();
   ParticleSet::resize(unsigned(numPtcls));
-  int dn = numWalkers - WalkerList.size();
-  if (dn > 0)
-    createWalkers(dn);
-  if (dn < 0)
-  {
-    int nw = -dn;
-    if (nw < WalkerList.size())
+  WalkerConfigurations::resize(numWalkers, TotalNum);
+  // no pre-existing walkers, need to initialized based on particleset.
+  if (old_nw == 0)
+    for (auto* awalker : WalkerList)
     {
-      iterator it = WalkerList.begin();
-      while (nw)
-      {
-        delete *it;
-        ++it;
-        --nw;
-      }
-      WalkerList.erase(WalkerList.begin(), WalkerList.begin() - dn);
+      awalker->R     = R;
+      awalker->spins = spins;
     }
-  }
-  //iterator it = WalkerList.begin();
-  //while(it != WalkerList.end()) {
-  //  delete *it++;
-  //}
-  //WalkerList.erase(WalkerList.begin(),WalkerList.end());
-  //R.resize(np);
-  //TotalNum = np;
-  //createWalkers(nw);
-}
-
-///returns the next valid iterator
-MCWalkerConfiguration::iterator MCWalkerConfiguration::destroyWalkers(iterator first, iterator last)
-{
-  if (OwnWalkers)
-  {
-    iterator it = first;
-    while (it != last)
-    {
-      delete *it++;
-    }
-  }
-  return WalkerList.erase(first, last);
-}
-
-void MCWalkerConfiguration::createWalkers(iterator first, iterator last)
-{
-  destroyWalkers(WalkerList.begin(), WalkerList.end());
-  OwnWalkers = true;
-  while (first != last)
-  {
-    WalkerList.push_back(new Walker_t(**first));
-    ++first;
-  }
-}
-
-void MCWalkerConfiguration::destroyWalkers(int nw)
-{
-  if (nw > WalkerList.size())
-  {
-    app_warning() << "  Cannot remove walkers. Current Walkers = " << WalkerList.size() << std::endl;
-    return;
-  }
-  nw     = WalkerList.size() - nw;
-  int iw = nw;
-  while (iw < WalkerList.size())
-  {
-    delete WalkerList[iw++];
-  }
-  //iterator it(WalkerList.begin()+nw),it_end(WalkerList.end());
-  //while(it != it_end)
-  //{
-  //  delete *it++;
-  //}
-  WalkerList.erase(WalkerList.begin() + nw, WalkerList.end());
-}
-
-void MCWalkerConfiguration::copyWalkers(iterator first, iterator last, iterator it)
-{
-  while (first != last)
-  {
-    (*it++)->makeCopy(**first++);
-  }
-}
-
-
-void MCWalkerConfiguration::copyWalkerRefs(Walker_t* head, Walker_t* tail)
-{
-  if (OwnWalkers)
-  //destroy the current walkers
-  {
-    destroyWalkers(WalkerList.begin(), WalkerList.end());
-    WalkerList.clear();
-    OwnWalkers = false; //set to false to prevent deleting the Walkers
-  }
-  if (WalkerList.size() < 2)
-  {
-    WalkerList.push_back(0);
-    WalkerList.push_back(0);
-  }
-  WalkerList[0] = head;
-  WalkerList[1] = tail;
 }
 
 /** Make Metropolis move to the walkers and save in a temporary array.
@@ -305,18 +122,6 @@ void MCWalkerConfiguration::sample(iterator it, RealType tauinv)
   //  makeGaussRandom(R);
   //  R *= tauinv;
   //  R += (*it)->R + (*it)->Drift;
-}
-
-void MCWalkerConfiguration::reset()
-{
-  iterator it(WalkerList.begin()), it_end(WalkerList.end());
-  while (it != it_end)
-  //(*it)->reset();++it;}
-  {
-    (*it)->Weight       = 1.0;
-    (*it)->Multiplicity = 1.0;
-    ++it;
-  }
 }
 
 //void MCWalkerConfiguration::clearAuxDataSet() {
@@ -357,7 +162,19 @@ void MCWalkerConfiguration::resetWalkerProperty(int ncopy)
 {
   int m(PropertyList.size());
   app_log() << "  Resetting Properties of the walkers " << ncopy << " x " << m << std::endl;
-  Properties.resize(ncopy, m);
+  try
+  {
+    Properties.resize(ncopy, m);
+  }
+  catch (std::domain_error& de)
+  {
+    app_error() << de.what() << '\n'
+                << "This is likely because some object has attempted to add walker properties\n"
+                << " in excess of WALKER_MAX_PROPERTIES.\n"
+                << "build with cmake ... -DWALKER_MAX_PROPERTIES=at_least_properties_required" << std::endl;
+    APP_ABORT("Fatal Exception");
+  }
+
   iterator it(WalkerList.begin()), it_end(WalkerList.end());
   while (it != it_end)
   {
@@ -387,19 +204,8 @@ void MCWalkerConfiguration::resizeWalkerHistories()
  */
 void MCWalkerConfiguration::setNumSamples(int n)
 {
-  clearEnsemble();
-  MaxSamples = n;
-  //do not add anything
-  if (n == 0)
-    return;
-  //SampleStack.resize(n,0);
-  SampleStack.reserve(n);
-  int nadd = n - SampleStack.size();
-  while (nadd > 0)
-  {
-    SampleStack.push_back(new MCSample(TotalNum));
-    --nadd;
-  }
+  samples.clearEnsemble();
+  samples.setMaxSamples(n);
 }
 
 /** save the current walkers to SampleStack
@@ -410,40 +216,38 @@ void MCWalkerConfiguration::saveEnsemble() { saveEnsemble(WalkerList.begin(), Wa
  */
 void MCWalkerConfiguration::saveEnsemble(iterator first, iterator last)
 {
-  //safety check
-  if (MaxSamples == 0)
-    return;
-  while ((first != last) && (CurSampleCount < MaxSamples))
+  for (; first != last; first++)
   {
-    SampleStack[CurSampleCount]->put(**first);
-    ++first;
-    ++CurSampleCount;
+    samples.appendSample(MCSample(**first));
   }
 }
-
 /** load a single sample from SampleStack
  */
-void MCWalkerConfiguration::loadSample(ParticleSet::ParticlePos_t& Pos, size_t iw) const { Pos = SampleStack[iw]->R; }
+void MCWalkerConfiguration::loadSample(ParticleSet::ParticlePos_t& Pos, size_t iw) const
+{
+  samples.loadSample(Pos, iw);
+}
 
 /** load SampleStack to WalkerList
  */
 void MCWalkerConfiguration::loadEnsemble()
 {
-  int nsamples = std::min(MaxSamples, CurSampleCount);
-  if (SampleStack.empty() || nsamples == 0)
+  using WP     = WalkerProperties::Indexes;
+  int nsamples = std::min(samples.getMaxSamples(), samples.getNumSamples());
+  if (samples.empty() || nsamples == 0)
     return;
-  Walker_t::PropertyContainer_t prop(1, PropertyList.size());
+  Walker_t::PropertyContainer_t prop(1, PropertyList.size(), 1, WP::MAXPROPERTIES);
   delete_iter(WalkerList.begin(), WalkerList.end());
   WalkerList.resize(nsamples);
   for (int i = 0; i < nsamples; ++i)
   {
     Walker_t* awalker = new Walker_t(TotalNum);
     awalker->Properties.copy(prop);
-    SampleStack[i]->get(*awalker);
+    samples.getSample(i).convertToWalker(*awalker);
     WalkerList[i] = awalker;
   }
   resizeWalkerHistories();
-  clearEnsemble();
+  samples.clearEnsemble();
 }
 
 ///** load SampleStack to WalkerList
@@ -489,45 +293,34 @@ bool MCWalkerConfiguration::dumpEnsemble(std::vector<MCWalkerConfiguration*>& ot
                                          int np,
                                          int nBlock)
 {
-#if !(defined(__bgp__) || (__bgq__))
-  MCWalkerConfiguration wtemp;
-  wtemp.resize(0, TotalNum);
-  wtemp.loadEnsemble(others, false);
-  int w = wtemp.getActiveWalkers();
-  if (w == 0)
-    return false;
-  std::vector<int> nwoff(np + 1, 0);
-  for (int ip = 0; ip < np; ++ip)
-    nwoff[ip + 1] = nwoff[ip] + w;
-  wtemp.setGlobalNumWalkers(nwoff[np]);
-  wtemp.setWalkerOffsets(nwoff);
-  out->dump(wtemp, nBlock);
-#endif
-  return true;
+  return samples.dumpEnsemble(others, out, np, nBlock);
 }
+
+int MCWalkerConfiguration::getMaxSamples() const { return samples.getMaxSamples(); }
 
 void MCWalkerConfiguration::loadEnsemble(std::vector<MCWalkerConfiguration*>& others, bool doclean)
 {
+  using WP = WalkerProperties::Indexes;
   std::vector<int> off(others.size() + 1, 0);
   for (int i = 0; i < others.size(); ++i)
   {
-    off[i + 1] = off[i] + std::min(others[i]->MaxSamples, others[i]->CurSampleCount);
+    off[i + 1] = off[i] + std::min(others[i]->getMaxSamples(), others[i]->numSamples());
   }
   int nw_tot = off.back();
   if (nw_tot)
   {
-    Walker_t::PropertyContainer_t prop(1, PropertyList.size());
+    Walker_t::PropertyContainer_t prop(1, PropertyList.size(), 1, WP::MAXPROPERTIES);
     while (WalkerList.size())
       pop_back();
     WalkerList.resize(nw_tot);
     for (int i = 0; i < others.size(); ++i)
     {
-      std::vector<MCSample*>& astack(others[i]->SampleStack);
+      SampleStack& astack(others[i]->getSampleStack());
       for (int j = 0, iw = off[i]; iw < off[i + 1]; ++j, ++iw)
       {
         Walker_t* awalker = new Walker_t(TotalNum);
         awalker->Properties.copy(prop);
-        astack[j]->get(*awalker);
+        astack.getSample(j).convertToWalker(*awalker);
         WalkerList[iw] = awalker;
       }
       if (doclean)
@@ -538,17 +331,7 @@ void MCWalkerConfiguration::loadEnsemble(std::vector<MCWalkerConfiguration*>& ot
     resizeWalkerHistories();
 }
 
-void MCWalkerConfiguration::clearEnsemble()
-{
-  //delete_iter(SampleStack.begin(),SampleStack.end());
-  for (int i = 0; i < SampleStack.size(); ++i)
-    if (SampleStack[i])
-      delete SampleStack[i];
-  SampleStack.clear();
-  MaxSamples     = 0;
-  CurSampleCount = 0;
-}
-
+void MCWalkerConfiguration::clearEnsemble() { samples.clearEnsemble(); }
 
 #ifdef QMC_CUDA
 void MCWalkerConfiguration::updateLists_GPU()

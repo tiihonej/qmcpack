@@ -19,7 +19,7 @@
 #define QMCPLUSPLUS_WAVEFUNCTIONTEST_H
 
 #include "QMCDrivers/QMCDriver.h"
-#include "QMCApp/ParticleSetPool.h"
+#include "Particle/ParticleSetPool.h"
 namespace qmcplusplus
 {
 /** Information for output of relative error in wavefunction derivatives
@@ -42,12 +42,14 @@ public:
 class WaveFunctionTester : public QMCDriver
 {
 public:
+  /// type definition
+  using LogValueType = WaveFunctionComponent::LogValueType;
+
   /// Constructor.
   WaveFunctionTester(MCWalkerConfiguration& w,
                      TrialWaveFunction& psi,
                      QMCHamiltonian& h,
                      ParticleSetPool& ptclPool,
-                     WaveFunctionPool& ppool,
                      Communicate* comm);
 
   ~WaveFunctionTester();

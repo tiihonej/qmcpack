@@ -24,13 +24,14 @@
 
 
 #include <Configuration.h>
-#include <OhmmsData/OhmmsElementBase.h>
-#include <OhmmsData/AttributeSet.h>
-#include <OhmmsPETE/OhmmsArray.h>
-#include <Particle/ParticleSet.h>
-#include <Utilities/IteratorUtility.h>
-#include <Message/Communicate.h>
-#include <io/hdf_archive.h>
+#include "OhmmsData/OhmmsElementBase.h"
+#include "OhmmsData/AttributeSet.h"
+#include "OhmmsPETE/OhmmsArray.h"
+#include "Particle/ParticleSet.h"
+#include "Utilities/IteratorUtility.h"
+#include "Message/Communicate.h"
+#include "hdf/hdf_archive.h"
+#include "Message/OpenMP.h"
 #include <map>
 #include <set>
 #include <algorithm>
@@ -427,7 +428,7 @@ struct TraceRequest
     for (it = quantities.begin(); it != quantities.end(); ++it)
     {
       TraceQuantity& q = it->second;
-      bool selected;
+      bool selected = false;
       if (selector == "scalar_available")
         selected = q.scalar_available;
       else if (selector == "array_available")
@@ -551,6 +552,7 @@ struct TraceSample
     check_shape();
   }
 
+  inline virtual ~TraceSample() = default;
 
   inline void initialize(const std::string& sdomain, const std::string& sname, int sindex, int sdim)
   {
@@ -1448,7 +1450,7 @@ public:
   Communicate* communicator;
   hdf_archive* hdf_file;
 
-  TraceManager(Communicate* comm = 0) : hdf_file(0), verbose(false)
+  TraceManager(Communicate* comm = 0) : verbose(false), hdf_file(0)
   {
     reset_permissions();
     master_copy    = true;
@@ -2118,7 +2120,7 @@ public:
 // make a vacuous class for TraceManager for lighter compilation
 //   disabling TraceManager should not affect other runtime behavior
 
-#include <Particle/ParticleSet.h>
+#include "Particle/ParticleSet.h"
 
 namespace qmcplusplus
 {

@@ -2,23 +2,25 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2019 QMCPACK developers.
+// Copyright (c) 2020 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //////////////////////////////////////////////////////////////////////////////////////
 
-#include "QMCDrivers/Crowd.h"
+#include "Crowd.h"
+#include "QMCHamiltonians/QMCHamiltonian.h"
 
 namespace qmcplusplus
 {
-void Crowd::clearResults()
+void Crowd::clearWalkers()
 {
-  // These were cleared to 1.0 each loop by VMCUpdatePbyP advance walker
-  // refactored code may depend on this initial value.
-  std::fill(log_gf_.begin(), log_gf_.end(), 1.0);
-  std::fill(log_gb_.begin(), log_gb_.end(), 1.0);
+  // We're clearing the refs to the objects not the referred to objects.
+  mcp_walkers_.clear();
+  mcp_wfbuffers_.clear();
+  walker_elecs_.clear();
+  walker_twfs_.clear();
+  walker_hamiltonians_.clear();
 }
-
 
 void Crowd::reserve(int crowd_size)
 {
@@ -27,14 +29,6 @@ void Crowd::reserve(int crowd_size)
   reserveCS(walker_elecs_);
   reserveCS(walker_twfs_);
   reserveCS(walker_hamiltonians_);
-
-  auto resizeCS = [crowd_size](auto& avector) { avector.resize(crowd_size); };
-  resizeCS(grads_now_);
-  resizeCS(grads_new_);
-  resizeCS(ratios_);
-  resizeCS(log_gf_);
-  resizeCS(log_gb_);
-  resizeCS(prob_);
 }
 
 void Crowd::addWalker(MCPWalker& walker, ParticleSet& elecs, TrialWaveFunction& twf, QMCHamiltonian& hamiltonian)
@@ -48,24 +42,32 @@ void Crowd::addWalker(MCPWalker& walker, ParticleSet& elecs, TrialWaveFunction& 
 
 void Crowd::loadWalkers()
 {
-  auto it_walker       = mcp_walkers_.begin();
-  auto it_walker_elecs = walker_elecs_.begin();
-  //flex walkers here
-  while (it_walker != mcp_walkers_.end())
-  {
-    (*it_walker_elecs).get().loadWalker(*it_walker, true);
-    ++it_walker;
-    ++it_walker_elecs;
-  }
+  for (int i = 0; i < mcp_walkers_.size(); ++i)
+    walker_elecs_[i].get().loadWalker(mcp_walkers_[i], true);
+}
+
+void Crowd::setRNGForHamiltonian(RandomGenerator_t& rng)
+{
+  for (QMCHamiltonian& ham : walker_hamiltonians_)
+    ham.setRandomGenerator(&rng);
 }
 
 void Crowd::startBlock(int num_steps)
 {
+  if (this->size() == 0)
+    return;
   n_accept_ = 0;
   n_reject_ = 0;
   // VMCBatched does no nonlocal moves
   n_nonlocal_accept_ = 0;
   estimator_manager_crowd_.startBlock(num_steps);
+}
+
+void Crowd::stopBlock()
+{
+  if (this->size() == 0)
+    return;
+  estimator_manager_crowd_.stopBlock();
 }
 
 } // namespace qmcplusplus

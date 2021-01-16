@@ -1,7 +1,11 @@
 # Check compiler version
-IF ( CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.4 )
+IF ( CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0 )
   MESSAGE(STATUS "Compiler Version ${CMAKE_CXX_COMPILER_VERSION}")
-  MESSAGE(FATAL_ERROR "Requires clang 3.4 or higher ")
+  MESSAGE(FATAL_ERROR "Requires clang 7.0 or higher ")
+ENDIF()
+
+IF ( CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 11.0.0 AND QMC_CXX_STANDARD EQUAL 17 AND BUILD_AFQMC )
+  MESSAGE(FATAL_ERROR "Avoid Clang 11.0.0 which cannot compile AFQMC properly with C++17!")
 ENDIF()
 
 # Set the std
@@ -10,11 +14,25 @@ SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -std=c99")
 # Enable OpenMP
 IF(QMC_OMP)
   SET(ENABLE_OPENMP 1)
-  SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -fopenmp")
-  IF(ENABLE_OFFLOAD)
+  IF(ENABLE_OFFLOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "CrayLinuxEnvironment")
     SET(OFFLOAD_TARGET "nvptx64-nvidia-cuda" CACHE STRING "Offload target architecture")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -fopenmp-targets=${OFFLOAD_TARGET}")
+    IF(DEFINED OFFLOAD_ARCH)
+      SET(CLANG_OPENMP_OFFLOAD_FLAGS "-fopenmp-targets=${OFFLOAD_TARGET} -Xopenmp-target=${OFFLOAD_TARGET} -march=${OFFLOAD_ARCH}")
+    ELSE()
+      SET(CLANG_OPENMP_OFFLOAD_FLAGS "-fopenmp-targets=${OFFLOAD_TARGET}")
+    ENDIF()
+
+    # Intel clang compiler needs a different flag for the host side OpenMP library when offload is used.
+    IF(OFFLOAD_TARGET MATCHES "spir64")
+      SET(OMP_FLAG "-fiopenmp")
+    ELSE(OFFLOAD_TARGET MATCHES "spir64")
+      SET(OMP_FLAG "-fopenmp")
+    ENDIF(OFFLOAD_TARGET MATCHES "spir64")
+
+    SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} ${OMP_FLAG}")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OMP_FLAG}")
   ELSE()
+    SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -fopenmp")
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
   ENDIF()
 ENDIF(QMC_OMP)
@@ -22,21 +40,26 @@ ENDIF(QMC_OMP)
 # Set clang specific flags (which we always want)
 ADD_DEFINITIONS( -Drestrict=__restrict__ )
 
-SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -fomit-frame-pointer -fstrict-aliasing")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fomit-frame-pointer -fstrict-aliasing -D__forceinline=inline")
+SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -fstrict-aliasing")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstrict-aliasing -D__forceinline=inline")
 
-# Suppress compile warnings
-SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -Wno-deprecated -Wno-unused-value")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated -Wno-unused-value")
-IF ( CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "3.8.0" )
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-undefined-var-template")
+# treat VLA as error
+SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -Werror=vla")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wvla")
+
+# set compiler warnings
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-unused-variable -Wno-overloaded-virtual -Wno-unused-private-field -Wno-unused-local-typedef")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unknown-pragmas")
+IF( CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10.0 )
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wmisleading-indentation")
 ENDIF()
 
+
 # Set extra optimization specific flags
-SET( CMAKE_C_FLAGS_RELEASE     "${CMAKE_C_FLAGS_RELEASE} -ffast-math" )
-SET( CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math" )
-SET( CMAKE_C_FLAGS_RELWITHDEBINFO     "${CMAKE_C_FLAGS_RELWITHDEBINFO} -ffast-math" )
-SET( CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -ffast-math" )
+SET( CMAKE_C_FLAGS_RELEASE     "${CMAKE_C_FLAGS_RELEASE} -fomit-frame-pointer -ffast-math" )
+SET( CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fomit-frame-pointer -ffast-math" )
+SET( CMAKE_C_FLAGS_RELWITHDEBINFO     "${CMAKE_C_FLAGS_RELWITHDEBINFO} -fomit-frame-pointer -ffast-math" )
+SET( CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fomit-frame-pointer -ffast-math" )
 
 # Set extra debug flags
 SET( CMAKE_C_FLAGS_DEBUG     "${CMAKE_C_FLAGS_DEBUG} -fno-omit-frame-pointer -fstandalone-debug" )
@@ -50,7 +73,7 @@ SET( CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fs
 #     arm: -mpcu
 #     default or cray: none
 #--------------------------------------
-IF($ENV{CRAYPE_VERSION} MATCHES ".")
+IF(CMAKE_SYSTEM_NAME STREQUAL "CrayLinuxEnvironment")
   # It's a cray machine. Don't do anything
 ELSEIF(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
   # the case for x86_64
@@ -80,6 +103,21 @@ ELSEIF(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64" OR CMAKE_SYSTEM_PROCESSOR MATCHES 
     SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -mcpu=native")
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
   endif() #(CMAKE_CXX_FLAGS MATCHES "-mcpu=" OR CMAKE_C_FLAGS MATCHES "-mcpu=")
+
+  IF(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64")
+  # Ensure PowerPC builds include optimization flags in release and release-with-debug builds
+  # Otherwise these are missing (2020-06-22)
+    SET( CMAKE_C_FLAGS_RELEASE     "${CMAKE_C_FLAGS_RELEASE} -O3 -DNDEBUG" )
+    SET( CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG" )
+    SET( CMAKE_C_FLAGS_RELWITHDEBINFO     "${CMAKE_C_FLAGS_RELWITHDEBINFO} -O3 -DNDEBUG" )
+    SET( CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3 -DNDEBUG" )
+  ENDIF()
+ENDIF()
+
+# Add OpenMP offload flags
+# This step is intentionally put after the -march parsing for CPUs.
+IF(DEFINED CLANG_OPENMP_OFFLOAD_FLAGS)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CLANG_OPENMP_OFFLOAD_FLAGS}")
 ENDIF()
 
 # Add static flags if necessary

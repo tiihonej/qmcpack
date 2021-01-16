@@ -15,8 +15,8 @@
 
 #ifndef QMCPLUSPLUS_PAIRCOOR_HAMILTONIAN_H
 #define QMCPLUSPLUS_PAIRCOOR_HAMILTONIAN_H
-#include <QMCHamiltonians/OperatorBase.h>
-#include <OhmmsPETE/OhmmsMatrix.h>
+#include "QMCHamiltonians/OperatorBase.h"
+#include "OhmmsPETE/OhmmsMatrix.h"
 
 namespace qmcplusplus
 {
@@ -49,6 +49,7 @@ public:
   bool get(std::ostream& os) const;
   OperatorBase* makeClone(ParticleSet& qp, TrialWaveFunction& psi);
 
+  void set_norm_factor();
   void report();
 
 private:

@@ -13,11 +13,11 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include <Particle/MCWalkerConfiguration.h>
-#include <Particle/HDFWalkerInput_0_4.h>
-#include <io/hdf_archive.h>
-#include <mpi/mpi_datatype.h>
-#include <mpi/collectives.h>
+#include "Particle/MCWalkerConfiguration.h"
+#include "HDFWalkerInput_0_4.h"
+#include "hdf/hdf_archive.h"
+#include "mpi/mpi_datatype.h"
+#include "mpi/collectives.h"
 #include "Utilities/FairDivide.h"
 
 namespace qmcplusplus
@@ -273,8 +273,8 @@ bool HDFWalkerInput_0_4::read_phdf5(std::string h5name)
   int nw_in = 0;
   h5name.append(hdf::config_ext);
   std::vector<int> woffsets;
-  int woffsets_size;
-  bool success;
+  int woffsets_size = 0;
+  bool success      = false;
 
   { // handle small dataset with master rank
     hdf_archive hin(myComm, false);

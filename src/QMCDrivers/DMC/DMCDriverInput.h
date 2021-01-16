@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2019 QMCPACK developers.
+// Copyright (c) 2020 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
@@ -32,6 +32,10 @@ public:
   bool get_reconfiguration() const { return reconfiguration_; }
   IndexType get_max_age() const { return max_age_; }
   IndexType get_branch_interval() const { return branch_interval_; }
+  std::string& get_non_local_move() { return NonLocalMove; }
+  double get_alpha() const { return alpha_; }
+  double get_gamma() const { return gamma_; }
+  RealType get_reserve() const { return reserve_; }
 
 private:
   /** @ingroup Parameters for DMC Driver
@@ -53,9 +57,13 @@ private:
   ///input std::string to use fast gradient
   std::string UseFastGrad;
   ///input to control maximum age allowed for walkers.
-  IndexType max_age_ = 0;
+  IndexType max_age_ = 10;
+  /// reserved walkers for population growth
+  RealType reserve_ = 1.0;
+  double alpha_     = 0.0;
+  double gamma_     = 0.0;
+  /** @} */
 public:
-
   friend std::ostream& operator<<(std::ostream& o_stream, const DMCDriverInput& vmci);
 };
 

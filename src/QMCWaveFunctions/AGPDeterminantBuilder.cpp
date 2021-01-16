@@ -13,18 +13,18 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-/**@file ThreeBodyGeminalBuilder.cpp
+/**@file
  *@brief definition of three-body jastrow of Geminal functions
  */
 #include "QMCWaveFunctions/AGPDeterminant.h"
-#include "QMCWaveFunctions/AGPDeterminantBuilder.h"
+#include "AGPDeterminantBuilder.h"
 #include "OhmmsData/AttributeSet.h"
 #include "QMCWaveFunctions/SPOSetBuilderFactory.h"
 
 namespace qmcplusplus
 {
-AGPDeterminantBuilder::AGPDeterminantBuilder(ParticleSet& els, TrialWaveFunction& wfs, PtclPoolType& pset)
-    : WaveFunctionComponentBuilder(els, wfs), ptclPool(pset), mySPOSetBuilderFactory(0), agpDet(0)
+AGPDeterminantBuilder::AGPDeterminantBuilder(Communicate* comm, ParticleSet& els, PtclPoolType& pset)
+    : WaveFunctionComponentBuilder(comm, els), ptclPool(pset), mySPOSetBuilderFactory(0), agpDet(0)
 {}
 
 template<class BasisBuilderT>
@@ -36,13 +36,7 @@ bool AGPDeterminantBuilder::createAGP(BasisBuilderT* abuilder, xmlNodePtr cur)
   while (cur != NULL)
   {
     std::string cname((const char*)(cur->name));
-    if (cname == basisset_tag)
-    {
-      basisSet = abuilder->addBasisSet(cur);
-      if (!basisSet)
-        return false;
-    }
-    else if (cname == "coefficient" || cname == "coefficients")
+    if (cname == "coefficient" || cname == "coefficients")
     {
       if (agpDet == 0)
       {
@@ -99,18 +93,17 @@ bool AGPDeterminantBuilder::createAGP(BasisBuilderT* abuilder, xmlNodePtr cur)
   return true;
 }
 
-bool AGPDeterminantBuilder::put(xmlNodePtr cur)
+WaveFunctionComponent* AGPDeterminantBuilder::buildComponent(xmlNodePtr cur)
 {
   if (agpDet)
   {
-    app_error() << "  AGPDeterminantBuilder::put exits. AGPDeterminant has been already created." << std::endl;
-    return false;
+    APP_ABORT("  AGPDeterminantBuilder::put exits. AGPDeterminant has been already created.\n");
+    return nullptr;
   }
   app_log() << "  AGPDeterminantBuilder Creating AGPDeterminant." << std::endl;
   xmlNodePtr curRoot = cur;
   bool success       = true;
   std::string cname, tname;
-  xmlNodePtr bPtr = NULL;
   xmlNodePtr cPtr = NULL;
   xmlNodePtr uPtr = NULL;
   OhmmsAttributeSet oAttrib;
@@ -121,11 +114,7 @@ bool AGPDeterminantBuilder::put(xmlNodePtr cur)
   while (cur != NULL)
   {
     getNodeName(cname, cur);
-    if (cname == basisset_tag)
-    {
-      bPtr = cur;
-    }
-    else if (cname.find("coeff") < cname.size())
+if (cname.find("coeff") < cname.size())
     {
       cPtr = cur;
     }
@@ -135,17 +124,18 @@ bool AGPDeterminantBuilder::put(xmlNodePtr cur)
     }
     cur = cur->next;
   }
-  if (bPtr == NULL || cPtr == NULL)
+  if (cPtr == NULL)
   {
-    app_error() << "  AGPDeterminantBuilder::put Cannot create AGPDeterminant. " << std::endl;
-    app_error() << "    Missing <basisset/> or <coefficients/>" << std::endl;
-    return false;
+    std::ostringstream err_msg;
+    err_msg << "  AGPDeterminantBuilder::put Cannot create AGPDeterminant." << std::endl
+            << "    Missing <coefficients/>" << std::endl;
+    APP_ABORT(err_msg.str());
+    return nullptr;
   }
   if (mySPOSetBuilderFactory == 0)
   {
-    mySPOSetBuilderFactory = new SPOSetBuilderFactory(targetPtcl, targetPsi, ptclPool);
+    mySPOSetBuilderFactory = new SPOSetBuilderFactory(myComm, targetPtcl, ptclPool);
     mySPOSetBuilderFactory->createSPOSetBuilder(curRoot);
-    mySPOSetBuilderFactory->loadBasisSetFromXML(bPtr);
   }
   // mmorales: this needs to be fixed after changes to BasisSetfactory
   //    BasisSetBase<RealType>* myBasisSet=mySPOSetBuilderFactory->getBasisSet();
@@ -192,7 +182,10 @@ bool AGPDeterminantBuilder::put(xmlNodePtr cur)
     app_log() << agpDet->LambdaUP << std::endl;
   }
   if (agpDet)
-    targetPsi.addComponent(agpDet, "AGP");
-  return success;
+    return agpDet;
+
+  APP_ABORT("failed to create an AGP determinant!\n");
+  return nullptr;
 }
+
 } // namespace qmcplusplus

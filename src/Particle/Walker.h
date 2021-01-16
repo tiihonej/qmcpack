@@ -22,36 +22,19 @@
 #define QMCPLUSPLUS_WALKER_H
 
 #include "OhmmsPETE/OhmmsMatrix.h"
+#include "MinimalContainers/ConstantSizeMatrix.hpp"
 #include "Utilities/PooledData.h"
 #include "Utilities/PooledMemory.h"
+#include "QMCDrivers/WalkerProperties.h"
 #ifdef QMC_CUDA
 #include "type_traits/CUDATypes.h"
 #include "Utilities/PointerPool.h"
-#include "CUDA/gpu_vector.h"
+#include "CUDA_legacy/gpu_vector.h"
 #endif
 #include <assert.h>
 #include <deque>
 namespace qmcplusplus
 {
-/** an enum denoting index of physical properties
- *
- * LOCALPOTENTIAL should be always the last enumeation
- * When a new enum is needed, modify ParticleSet::initPropertyList to match the list
- */
-enum
-{
-  LOGPSI = 0,      /*!< log(std::abs(psi)) instead of square of the many-body wavefunction \f$|\Psi|^2\f$ */
-  SIGN,            /*!< value of the many-body wavefunction \f$\Psi(\{R\})\f$ */
-  UMBRELLAWEIGHT,  /*!< sum of wavefunction ratios for multiple H and Psi */
-  R2ACCEPTED,      /*!< r^2 for accepted moves */
-  R2PROPOSED,      /*!< r^2 for proposed moves */
-  DRIFTSCALE,      /*!< scaling value for the drift */
-  ALTERNATEENERGY, /*!< alternatelocal energy, the sum of all the components */
-  LOCALENERGY,     /*!< local energy, the sum of all the components */
-  LOCALPOTENTIAL,  /*!< local potential energy = local energy - kinetic energy */
-  NUMPROPERTIES    /*!< the number of properties */
-};
-
 /** A container class to represent a walker.
  *
  * A walker stores the particle configurations {R}  and a property container.
@@ -62,12 +45,17 @@ enum
  * - Age : generation after a move is accepted.
  * - Weight : weight to take the ensemble averages
  * - Multiplicity : multiplicity for branching. Probably can be removed.
- * - Properties  : 2D container. RealTypehe first index corresponds to the H/Psi index and second index >=NUMPROPERTIES.
- * - DataSet : anonymous container.
+ * - Properties  : 2D container. RealType first index corresponds to the H/Psi index and second index >=WP::NUMPROPERTIES.
+ * - DataSet : a contiguous buffer providing a state snapshot of most/all walker data. 
+     Much complicated state management arises in keeping this up to date, 
+     or purposefully out of sync with actual datamembers. Here and in TWF, HAMs and PARTICLE sets
+     associated with the walker.
  */
 template<typename t_traits, typename p_traits>
-struct Walker
+class Walker
 {
+public:
+  using WP = WalkerProperties::Indexes;
   enum
   {
     DIM = t_traits::DIM
@@ -95,14 +83,15 @@ struct Walker
   typedef typename p_traits::SingleParticleValue_t SingleParticleValue_t;
 
   ///typedef for the property container, fixed size
-  typedef Matrix<FullPrecRealType> PropertyContainer_t;
+  using PropertyContainer_t = ConstantSizeMatrix<FullPrecRealType, std::allocator<FullPrecRealType>>;
 
   /** @{
-   * Not really "buffers", rename
+   * Not really "buffers", "walker message" also used to serialize walker, rename
    */
-  typedef PooledMemory<OHMMS_PRECISION_FULL> WFBuffer_t;
+  typedef PooledMemory<FullPrecRealType> WFBuffer_t;
   typedef PooledData<RealType> Buffer_t;
   /** }@ */
+
   ///id reserved for forward walking
   long ID;
   ///id reserved for forward walking
@@ -124,14 +113,14 @@ struct Walker
    *
    * When Multiplicity = 0, this walker will be destroyed.
    */
-  RealType Multiplicity;
+  FullPrecRealType Multiplicity;
   /// mark true if this walker is being sent.
   bool SendInProgress;
 
   /** The configuration vector (3N-dimensional vector to store
      the positions of all the particles for a single walker)*/
   ParticlePos_t R;
-  
+
   //Dynamical spin variable.
   ParticleScalar_t spins;
 #if !defined(SOA_MEMORY_OPTIMIZED)
@@ -153,6 +142,16 @@ struct Walker
   ///buffer for the data for particle-by-particle update
   WFBuffer_t DataSet;
   size_t block_end, scalar_end;
+
+  // This is very useful for debugging transfer damage to walkers
+#ifndef NDEBUG
+private:
+  bool has_been_on_wire_ = false;
+
+public:
+  bool get_has_been_on_wire() const { return has_been_on_wire_; }
+  void set_has_been_on_wire(bool tf) { has_been_on_wire_ = tf; }
+#endif
 
   /// Data for GPU-vectorized versions
 #ifdef QMC_CUDA
@@ -186,8 +185,10 @@ struct Walker
 
   ///create a walker for n-particles
   inline explicit Walker(int nptcl = 0)
+      : Properties(1, WP::NUMPROPERTIES, 1, WP::MAXPROPERTIES)
 #ifdef QMC_CUDA
-      : cuda_DataSet("Walker::walker_buffer"),
+        ,
+        cuda_DataSet("Walker::walker_buffer"),
         R_GPU("Walker::R_GPU"),
         Grad_GPU("Walker::Grad_GPU"),
         Lap_GPU("Walker::Lap_GPU"),
@@ -203,10 +204,10 @@ struct Walker
     Multiplicity       = 1.0;
     ReleasedNodeWeight = 1.0;
     ReleasedNodeAge    = 0;
-    Properties.resize(1, NUMPROPERTIES);
+
     if (nptcl > 0)
       resize(nptcl);
-    Properties = 0.0;
+    //static_cast<Matrix<FullPrecRealType>>(Properties) = 0.0;
   }
 
   inline int addPropertyHistory(int leng)
@@ -298,6 +299,8 @@ struct Walker
     if (R.size() != a.R.size())
       resize(a.R.size());
     R = a.R;
+    if (spins.size() != a.spins.size())
+      resize(a.spins.size());
     spins = a.spins;
 #if !defined(SOA_MEMORY_OPTIMIZED)
     G = a.G;
@@ -320,16 +323,16 @@ struct Walker
   }
 
   //return the address of the values of Hamiltonian terms
-  inline FullPrecRealType* restrict getPropertyBase() { return Properties.data(); }
+  inline FullPrecRealType* getPropertyBase() { return Properties.data(); }
 
   //return the address of the values of Hamiltonian terms
-  inline const FullPrecRealType* restrict getPropertyBase() const { return Properties.data(); }
+  inline const FullPrecRealType* getPropertyBase() const { return Properties.data(); }
 
   ///return the address of the i-th properties
-  inline FullPrecRealType* restrict getPropertyBase(int i) { return Properties[i]; }
+  inline FullPrecRealType* getPropertyBase(int i) { return Properties[i]; }
 
   ///return the address of the i-th properties
-  inline const FullPrecRealType* restrict getPropertyBase(int i) const { return Properties[i]; }
+  inline const FullPrecRealType* getPropertyBase(int i) const { return Properties[i]; }
 
 
   /** reset the property of a walker
@@ -344,23 +347,23 @@ struct Walker
   {
     Age = 0;
     //Weight=1.0;
-    Properties(LOGPSI)      = logpsi;
-    Properties(SIGN)        = sigN;
-    Properties(LOCALENERGY) = ene;
+    Properties(WP::LOGPSI)      = logpsi;
+    Properties(WP::SIGN)        = sigN;
+    Properties(WP::LOCALENERGY) = ene;
   }
 
   inline void resetReleasedNodeProperty(FullPrecRealType localenergy,
                                         FullPrecRealType alternateEnergy,
                                         FullPrecRealType altR)
   {
-    Properties(ALTERNATEENERGY) = alternateEnergy;
-    Properties(LOCALENERGY)     = localenergy;
-    Properties(SIGN)            = altR;
+    Properties(WP::ALTERNATEENERGY) = alternateEnergy;
+    Properties(WP::LOCALENERGY)     = localenergy;
+    Properties(WP::SIGN)            = altR;
   }
   inline void resetReleasedNodeProperty(FullPrecRealType localenergy, FullPrecRealType alternateEnergy)
   {
-    Properties(ALTERNATEENERGY) = alternateEnergy;
-    Properties(LOCALENERGY)     = localenergy;
+    Properties(WP::ALTERNATEENERGY) = alternateEnergy;
+    Properties(WP::LOCALENERGY)     = localenergy;
   }
   /** reset the property of a walker
    * @param logpsi \f$\log |\Psi|\f$
@@ -380,13 +383,13 @@ struct Walker
                             FullPrecRealType r2p,
                             FullPrecRealType vq)
   {
-    Age                     = 0;
-    Properties(LOGPSI)      = logpsi;
-    Properties(SIGN)        = sigN;
-    Properties(LOCALENERGY) = ene;
-    Properties(R2ACCEPTED)  = r2a;
-    Properties(R2PROPOSED)  = r2p;
-    Properties(DRIFTSCALE)  = vq;
+    Age                         = 0;
+    Properties(WP::LOGPSI)      = logpsi;
+    Properties(WP::SIGN)        = sigN;
+    Properties(WP::LOCALENERGY) = ene;
+    Properties(WP::R2ACCEPTED)  = r2a;
+    Properties(WP::R2PROPOSED)  = r2p;
+    Properties(WP::DRIFTSCALE)  = vq;
   }
 
   /** marked to die
@@ -416,6 +419,8 @@ struct Walker
    */
   inline size_t byteSize()
   {
+    // TODO: fix this! this is a non intuitive side effect for a size call
+    //       breaks a bunch of things that could be const
     if (!DataSet.size())
     {
       registerData();
@@ -438,11 +443,17 @@ struct Walker
     DataSet.add(ReleasedNodeWeight);
     // vectors
     DataSet.add(R.first_address(), R.last_address());
+    DataSet.add(spins.first_address(), spins.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)
     DataSet.add(G.first_address(), G.last_address());
     DataSet.add(L.first_address(), L.last_address());
 #endif
-    DataSet.add(Properties.first_address(), Properties.last_address());
+    //Don't add the nLocal but the actual allocated size.  We want to register once for the life of a
+    //walker so we leave space for additional properties.
+    DataSet.add(Properties.data(), Properties.data() + Properties.capacity());
+    //DataSet.add(Properties.first_address(), Properties.last_address());
+
+    // \todo likely to be broken if the Properties change above is needed.
     for (int iat = 0; iat < PropertyHistory.size(); iat++)
       DataSet.add(PropertyHistory[iat].data(), PropertyHistory[iat].data() + PropertyHistory[iat].size());
     DataSet.add(PHindex.data(), PHindex.data() + PHindex.size());
@@ -468,11 +479,12 @@ struct Walker
     DataSet >> ID >> ParentID >> Generation >> Age >> GuideWeight >> ReleasedNodeAge >> ReleasedNodeWeight;
     // vectors
     DataSet.get(R.first_address(), R.last_address());
+    DataSet.get(spins.first_address(), spins.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)
     DataSet.get(G.first_address(), G.last_address());
     DataSet.get(L.first_address(), L.last_address());
 #endif
-    DataSet.get(Properties.first_address(), Properties.last_address());
+    DataSet.get(Properties.data(), Properties.data() + Properties.capacity());
     for (int iat = 0; iat < PropertyHistory.size(); iat++)
       DataSet.get(PropertyHistory[iat].data(), PropertyHistory[iat].data() + PropertyHistory[iat].size());
     DataSet.get(PHindex.data(), PHindex.data() + PHindex.size());
@@ -517,11 +529,12 @@ struct Walker
     DataSet << ID << ParentID << Generation << Age << GuideWeight << ReleasedNodeAge << ReleasedNodeWeight;
     // vectors
     DataSet.put(R.first_address(), R.last_address());
+    DataSet.put(spins.first_address(), spins.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)
     DataSet.put(G.first_address(), G.last_address());
     DataSet.put(L.first_address(), L.last_address());
 #endif
-    DataSet.put(Properties.first_address(), Properties.last_address());
+    DataSet.put(Properties.data(), Properties.data() + Properties.capacity());
     for (int iat = 0; iat < PropertyHistory.size(); iat++)
       DataSet.put(PropertyHistory[iat].data(), PropertyHistory[iat].data() + PropertyHistory[iat].size());
     DataSet.put(PHindex.data(), PHindex.data() + PHindex.size());

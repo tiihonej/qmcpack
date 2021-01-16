@@ -12,16 +12,18 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCWaveFunctions/AGPDeterminant.h"
+#include "AGPDeterminant.h"
 #include "Numerics/DeterminantOperators.h"
 #include "Numerics/MatrixOperators.h"
-#include "simd/simd.hpp"
+#include "CPU/SIMD/simd.hpp"
 
 namespace qmcplusplus
 {
 using std::copy;
 
-AGPDeterminant::AGPDeterminant(BasisSetType* bs) : GeminalBasis(bs), NumPtcls(0) {}
+AGPDeterminant::AGPDeterminant(BasisSetType* bs)
+    : WaveFunctionComponent("AGPDeterminant"), GeminalBasis(bs), NumPtcls(0)
+{}
 AGPDeterminant::~AGPDeterminant() {}
 
 void AGPDeterminant::resize(int nup, int ndown)
@@ -87,9 +89,6 @@ void AGPDeterminant::reportStatus(std::ostream& os)
   //do nothing
 }
 
-
-void AGPDeterminant::resetTargetParticleSet(ParticleSet& P) { GeminalBasis->resetTargetParticleSet(P); }
-
 /** Calculate the log value of the Dirac determinant for particles
  *@param P input configuration containing N particles
  *@param G a vector containing N gradients
@@ -100,9 +99,9 @@ void AGPDeterminant::resetTargetParticleSet(ParticleSet& P) { GeminalBasis->rese
  *contribution of the determinant to G(radient) and L(aplacian)
  *for local energy calculations.
  */
-AGPDeterminant::ValueType AGPDeterminant::evaluateLog(ParticleSet& P,
-                                                      ParticleSet::ParticleGradient_t& G,
-                                                      ParticleSet::ParticleLaplacian_t& L)
+AGPDeterminant::LogValueType AGPDeterminant::evaluateLog(ParticleSet& P,
+                                                         ParticleSet::ParticleGradient_t& G,
+                                                         ParticleSet::ParticleLaplacian_t& L)
 {
   evaluateLogAndStore(P);
   G += myG;
@@ -133,7 +132,7 @@ void AGPDeterminant::evaluateLogAndStore(ParticleSet& P)
     }
   }
   //CurrentDet = Invert(psiM.data(),Nup,Nup,WorkSpace.data(),Pivot.data());
-  LogValue = InvertWithLog(psiM.data(), Nup, Nup, WorkSpace.data(), Pivot.data(), PhaseValue);
+  InvertWithLog(psiM.data(), Nup, Nup, WorkSpace.data(), Pivot.data(), LogValue);
   for (int iat = 0; iat < Nup; iat++)
   {
     for (int d = 0, jat = Nup; d < Ndown; d++, jat++)
@@ -192,7 +191,7 @@ void AGPDeterminant::registerData(ParticleSet& P, WFBufferType& buf)
   //buf.add(myL.begin(), myL.end());
 }
 
-AGPDeterminant::ValueType AGPDeterminant::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
+AGPDeterminant::LogValueType AGPDeterminant::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
 {
   evaluateLogAndStore(P);
   P.G += myG;
@@ -244,7 +243,7 @@ void AGPDeterminant::copyFromBuffer(ParticleSet& P, WFBufferType& buf)
  * @param P current configuration
  * @param iat the particle thas is being moved
  */
-AGPDeterminant::ValueType AGPDeterminant::ratio(ParticleSet& P, int iat)
+AGPDeterminant::PsiValueType AGPDeterminant::ratio(ParticleSet& P, int iat)
 {
   UpdateMode = ORB_PBYP_RATIO;
   //GeminalBasis->evaluate(P,iat);
@@ -354,10 +353,9 @@ void AGPDeterminant::ratioDown(ParticleSet& P, int iat)
 
 /** move was accepted, update the real container
  */
-void AGPDeterminant::acceptMove(ParticleSet& P, int iat)
+void AGPDeterminant::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
 {
-  PhaseValue += evaluatePhase(curRatio);
-  LogValue += std::log(std::abs(curRatio));
+  LogValue += convertValueToLog(curRatio);
   //CurrentDet *= curRatio;
   if (UpdateMode == ORB_PBYP_RATIO)
   {
@@ -419,7 +417,6 @@ WaveFunctionComponentPtr AGPDeterminant::makeClone(ParticleSet& tqp) const
 {
   AGPDeterminant* myclone = new AGPDeterminant(0);
   myclone->GeminalBasis   = GeminalBasis->makeClone();
-  myclone->GeminalBasis->resetTargetParticleSet(tqp);
   myclone->resize(Nup, Ndown);
   myclone->Lambda = Lambda;
   if (Nup != Ndown)

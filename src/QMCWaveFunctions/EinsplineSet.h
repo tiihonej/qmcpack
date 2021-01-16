@@ -23,11 +23,11 @@
 #include "QMCWaveFunctions/SPOSet.h"
 #include "QMCWaveFunctions/AtomicOrbital.h"
 #include "QMCWaveFunctions/MuffinTin.h"
-#include "Utilities/NewTimer.h"
-#include <spline/einspline_engine.hpp>
+#include "Utilities/TimerManager.h"
+#include "spline/einspline_engine.hpp"
 #ifdef QMC_CUDA
-#include <einspline/multi_bspline_create_cuda.h>
-#include "QMCWaveFunctions/AtomicOrbitalCuda.h"
+#include "einspline/multi_bspline_create_cuda.h"
+#include "QMCWaveFunctions/detail/CUDA_legacy/AtomicOrbitalCuda.h"
 #endif
 
 namespace qmcplusplus
@@ -78,7 +78,6 @@ public:
 public:
   UnitCellType GetLattice();
   virtual void resetParameters(const opt_variables_type& active) {}
-  void resetTargetParticleSet(ParticleSet& e);
   void resetSourceParticleSet(ParticleSet& ions);
   void setOrbitalSetSize(int norbs);
   inline std::string Type() { return "EinsplineSet"; }
@@ -289,7 +288,7 @@ protected:
   // Timers //
   ////////////
   NewTimer &ValueTimer, &VGLTimer, &VGLMatTimer;
-  NewTimer &EinsplineTimer;
+  NewTimer& EinsplineTimer;
 
 #ifdef QMC_CUDA
   // Cuda equivalents of the above
@@ -355,12 +354,12 @@ public:
   }
 
   // Real return values
-  void evaluate(const ParticleSet& P, int iat, RealValueVector_t& psi);
-  void evaluate(const ParticleSet& P,
-                int iat,
-                RealValueVector_t& psi,
-                RealGradVector_t& dpsi,
-                RealValueVector_t& d2psi);
+  void evaluateValue(const ParticleSet& P, int iat, RealValueVector_t& psi);
+  void evaluateVGL(const ParticleSet& P,
+                   int iat,
+                   RealValueVector_t& psi,
+                   RealGradVector_t& dpsi,
+                   RealValueVector_t& d2psi);
   void evaluate_notranspose(const ParticleSet& P,
                             int first,
                             int last,
@@ -408,17 +407,17 @@ public:
                           ComplexGradMatrix_t& gradphi);
 #endif
   // Complex return values
-  void evaluate(const ParticleSet& P, int iat, ComplexValueVector_t& psi);
-  void evaluate(const ParticleSet& P,
-                int iat,
-                ComplexValueVector_t& psi,
-                ComplexGradVector_t& dpsi,
-                ComplexValueVector_t& d2psi);
-  void evaluate(const ParticleSet& P,
-                int iat,
-                ComplexValueVector_t& psi,
-                ComplexGradVector_t& dpsi,
-                ComplexHessVector_t& grad_grad_psi);
+  void evaluateValue(const ParticleSet& P, int iat, ComplexValueVector_t& psi);
+  void evaluateVGL(const ParticleSet& P,
+                   int iat,
+                   ComplexValueVector_t& psi,
+                   ComplexGradVector_t& dpsi,
+                   ComplexValueVector_t& d2psi);
+  void evaluateVGH(const ParticleSet& P,
+                   int iat,
+                   ComplexValueVector_t& psi,
+                   ComplexGradVector_t& dpsi,
+                   ComplexHessVector_t& grad_grad_psi);
   void evaluate_notranspose(const ParticleSet& P,
                             int first,
                             int last,
@@ -486,7 +485,6 @@ public:
 #endif
 
   void resetParameters(const opt_variables_type& active);
-  void resetTargetParticleSet(ParticleSet& e);
   void setOrbitalSetSize(int norbs);
   std::string Type();
 
@@ -497,20 +495,14 @@ public:
   SPOSet* makeClone() const;
 
   EinsplineSetExtended()
-      : ValueTimer(*TimerManager.createTimer("EinsplineSetExtended::ValueOnly")),
-        VGLTimer(*TimerManager.createTimer("EinsplineSetExtended::VGL")),
-        VGLMatTimer(*TimerManager.createTimer("EinsplineSetExtended::VGLMatrix")),
-        EinsplineTimer(*TimerManager.createTimer("libeinspline")),
-        MultiSpline(NULL)
+      : MultiSpline(NULL),
+        ValueTimer(*timer_manager.createTimer("EinsplineSetExtended::ValueOnly")),
+        VGLTimer(*timer_manager.createTimer("EinsplineSetExtended::VGL")),
+        VGLMatTimer(*timer_manager.createTimer("EinsplineSetExtended::VGLMatrix")),
+        EinsplineTimer(*timer_manager.createTimer("libeinspline"))
 #ifdef QMC_CUDA
         ,
         CudaMultiSpline(NULL),
-        cudapos("EinsplineSetExtended::cudapos"),
-        NLcudapos("EinsplineSetExtended::NLcudapos"),
-        cudaSign("EinsplineSetExtended::cudaSign"),
-        NLcudaSign("EinsplineSetExtended::NLcudaSign"),
-        Linv_cuda("EinsplineSetExtended::Linv_cuda"),
-        L_cuda("EinsplineSetExtended::L_cuda"),
         CudaValueVector("EinsplineSetExtended::CudaValueVector"),
         CudaGradLaplVector("EinsplineSetExtended::CudaGradLaplVector"),
         CudaValuePointers("EinsplineSetExtended::CudaValuePointers"),
@@ -518,7 +510,13 @@ public:
         CudaMakeTwoCopies("EinsplineSetExtended::CudaMakeTwoCopies"),
         CudaTwoCopiesIndex("EinsplineSetExtended::CudaTwoCopiesIndex"),
         CudakPoints("EinsplineSetExtended::CudakPoints"),
-        CudakPoints_reduced("EinsplineSetExtended::CudakPoints_reduced")
+        CudakPoints_reduced("EinsplineSetExtended::CudakPoints_reduced"),
+        cudapos("EinsplineSetExtended::cudapos"),
+        NLcudapos("EinsplineSetExtended::NLcudapos"),
+        cudaSign("EinsplineSetExtended::cudaSign"),
+        NLcudaSign("EinsplineSetExtended::NLcudaSign"),
+        Linv_cuda("EinsplineSetExtended::Linv_cuda"),
+        L_cuda("EinsplineSetExtended::L_cuda")
 #endif
   {
     className = "EinsplineSetExtended";
@@ -662,7 +660,7 @@ public:
 ////    double s, c;
 ////    for (int i=0; i<kPoints.size(); i++) {
 ////      phase[i] = -dot(r, kPoints[i]);
-////      sincos (phase[i], &s, &c);
+////      qmcplusplus::sincos (phase[i], &s, &c);
 ////      eikr[i] = std::complex<double>(c,s);
 ////    }
 ////#endif

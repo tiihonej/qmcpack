@@ -284,14 +284,19 @@ class Simulation(NexusCore):
 
     # test needed
     @classmethod
-    def separate_inputs(cls,kwargs,overlapping_kw=-1,copy_pseudos=True):
+    def separate_inputs(cls,kwargs,overlapping_kw=-1,copy_pseudos=True,sim_kw=None):
         if overlapping_kw==-1:
             overlapping_kw = set(['system'])
         elif overlapping_kw is None:
             overlapping_kw = set()
         #end if
+        if sim_kw is None:
+            sim_kw = set()
+        else:
+            sim_kw = set(sim_kw)
+        #end if
         kw       = set(kwargs.keys())
-        sim_kw   = kw & Simulation.allowed_inputs
+        sim_kw   = kw & (Simulation.allowed_inputs | sim_kw)
         inp_kw   = (kw - sim_kw) | (kw & overlapping_kw)    
         sim_args = obj()
         inp_args = obj()
@@ -841,7 +846,7 @@ class Simulation(NexusCore):
             if not self.got_dependencies:
                 for dep in self.ordered_dependencies:
                     sim = dep.sim
-                    for result_name,result in dep.results.iteritems():
+                    for result_name,result in dep.results.items():
                         if result_name!='other':
                             if self.has_generic_input():
                                 self.error('a simulation result cannot be incorporated into generic formatted or template input\nplease use {0} instead of {1}\nsim id: {2}\ndirectory: {3}\nresult: {4}'.format(cls.input_type.__class__.__name__,self.input.__class__.__name__,self.id,self.locdir,result_name))
@@ -975,7 +980,7 @@ class Simulation(NexusCore):
             self.input.save(os.path.join(self.imlocdir,self.input_image))
         #end if
         #try to also write structure information
-        if self.system!=None:
+        if self.system is not None:
             filebase = os.path.join(self.locdir,self.identifier+'.struct')
             try:
                 self.system.structure.write(filebase+'.xyz')
@@ -1005,7 +1010,7 @@ class Simulation(NexusCore):
         if not os.path.exists(self.imremdir):
             os.makedirs(self.imremdir)
         #end if
-        if self.infile!=None:
+        if self.infile is not None:
             self.files.add(self.infile)
         #end if
         send_files = self.files
@@ -1065,7 +1070,7 @@ class Simulation(NexusCore):
 
 
     def update_process_id(self):
-        if self.process_id is None and self.job.system_id!=None:
+        if self.process_id is None and self.job.system_id is not None:
             self.process_id = self.job.system_id
             self.save_image()
         #end if
@@ -1078,11 +1083,11 @@ class Simulation(NexusCore):
             self.finished = self.job.finished
         elif self.job.finished:
             should_check = True
-            if self.outfile!=None:
+            if self.outfile is not None:
                 outfile = os.path.join(self.locdir,self.outfile)
                 should_check &= os.path.exists(outfile)
             #end if
-            if self.errfile!=None:
+            if self.errfile is not None:
                 errfile = os.path.join(self.locdir,self.errfile)
                 should_check &= os.path.exists(errfile)
             #end if
@@ -1091,9 +1096,6 @@ class Simulation(NexusCore):
             #end if
             if self.failed:
                 self.finished = True
-                # commented out block dependents 15/09/30
-                # try to rely on persistent failed flag instead
-                #self.block_dependents() 
             #end if
         #end if
         if self.finished:
@@ -1125,13 +1127,13 @@ class Simulation(NexusCore):
             self.log('copying results'+self.idstr(),n=3)
             if not nexus_core.generate_only:
                 output_files = self.get_output_files()
-                if self.infile!=None:
+                if self.infile is not None:
                     output_files.append(self.infile)
                 #end if
-                if self.outfile!=None:
+                if self.outfile is not None:
                     output_files.append(self.outfile)
                 #end if
-                if self.errfile!=None:
+                if self.errfile is not None:
                     output_files.append(self.errfile)
                 #end if
                 files_missing = []
@@ -1157,6 +1159,9 @@ class Simulation(NexusCore):
 
         
     def analyze(self):
+        if not os.path.exists(self.imresdir):
+            os.makedirs(self.imresdir)
+        #end if
         if self.finished:
             self.enter(self.locdir,False,self.simid)
             self.log('analyzing'+self.idstr(),n=3)
@@ -1205,7 +1210,7 @@ class Simulation(NexusCore):
 
 
     def progress(self,dependency_id=None):
-        if dependency_id!=None:
+        if dependency_id is not None:
             self.wait_ids.remove(dependency_id)
         #end if
         if len(self.wait_ids)==0 and not self.block and not self.failed:
@@ -1305,7 +1310,7 @@ class Simulation(NexusCore):
         if os.path.exists(imagefile) and not self.loaded:
             self.load_image()
             # continue from interruption
-            if self.submitted and not self.finished and self.process_id!=None:
+            if self.submitted and not self.finished and self.process_id is not None:
                 self.job.system_id = self.process_id # load process id of job
                 self.job.reenter_queue()
             #end if
@@ -1331,6 +1336,15 @@ class Simulation(NexusCore):
             #end for
         #end if
     #end def traverse_cascade
+
+
+    # used only in tests
+    def traverse_full_cascade(self,operation,*args,**kwargs):
+        operation(self,*args,**kwargs)
+        for sim in self.dependents:
+            sim.traverse_full_cascade(operation,*args,**kwargs)
+        #end for
+    #end def traverse_full_cascade
 
 
     def write_dependents(self,n=0,location=False,block_status=False):
@@ -1385,12 +1399,24 @@ class Simulation(NexusCore):
         #end if
         self.leave()
         self.submitted = True
-        if self.job!=None:
+        if self.job is not None:
             job.status = job.states.finished
             self.job.finished = True
         #end if
     #end def execute
 
+
+    def show_input(self,exit=True):
+        print()
+        print(80*'=')
+        print('Input file for simulation "{}"\nDirectory: {}'.format(self.identifier,self.locdir))
+        print(80*'-')
+        print(self.input.write())
+        print(80*'=')
+        if exit:
+            exit_call()
+        #end if
+    #end def show_input
 #end class Simulation
 
 
@@ -1703,7 +1729,7 @@ except:
 #end try
 import tempfile
 exit_call = sys.exit
-def graph_sims(sims=None,savefile=None,useid=False,exit=True,quants=True):
+def graph_sims(sims=None,savefile=None,useid=False,exit=True,quants=True,display=True):
     if sims is None:
         sims = Simulation.all_sims
     #end if
@@ -1735,7 +1761,7 @@ def graph_sims(sims=None,savefile=None,useid=False,exit=True,quants=True):
         graph.add_node(node.node)
     #end for
     for node in nodes:
-        for simid,dep in node.sim.dependencies.iteritems():
+        for simid,dep in node.sim.dependencies.items():
             other = nodes[simid].node
             if quants:
                 for quantity in dep.result_names:
@@ -1758,7 +1784,7 @@ def graph_sims(sims=None,savefile=None,useid=False,exit=True,quants=True):
     graph.write(savefile,format=fmt,prog='dot')
 
     # display the image
-    if fmt=='png':
+    if fmt=='png' and display:
         imshow(imread(savefile))
         xticks([])
         yticks([])

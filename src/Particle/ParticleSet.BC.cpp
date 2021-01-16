@@ -111,7 +111,7 @@ void ParticleSet::createSK()
     else
     {
       app_log() << "\n  Creating Structure Factor for periodic systems " << LRBox.LR_kc << std::endl;
-      SK = new StructFact(*this, LRBox.LR_kc);
+      SK = std::make_unique<StructFact>(*this, LRBox.LR_kc);
     }
     //Lattice.print(app_log());
     //This uses the copy constructor to avoid recomputing the data.
@@ -129,7 +129,7 @@ void ParticleSet::createSK()
   for (int iat = 0; iat < GroupID.size(); iat++)
     Mass[iat] = mySpecies(massind, GroupID[iat]);
 
-  RSoA = R;
+  coordinates_->setAllParticlePos(R);
 }
 
 void ParticleSet::turnOnPerParticleSK()
@@ -211,7 +211,7 @@ void ParticleSet::applyBC(const ParticlePos_t& pin, ParticlePos_t& pout, int fir
     else if (pout.getUnit() == PosUnit::Lattice)
       ApplyBConds<ParticlePos_t, Tensor_t, DIM>::Cart2Unit(pin, Lattice.G, pout, first, last);
     else
-       throw std::runtime_error("Unknown unit conversion");
+      throw std::runtime_error("Unknown unit conversion");
   }
   else if (pin.getUnit() == PosUnit::Lattice)
   {
@@ -220,7 +220,7 @@ void ParticleSet::applyBC(const ParticlePos_t& pin, ParticlePos_t& pout, int fir
     else if (pout.getUnit() == PosUnit::Lattice)
       ApplyBConds<ParticlePos_t, Tensor_t, DIM>::Unit2Unit(pin, pout, first, last);
     else
-       throw std::runtime_error("Unknown unit conversion");
+      throw std::runtime_error("Unknown unit conversion");
   }
   else
     throw std::runtime_error("Unknown unit conversion");

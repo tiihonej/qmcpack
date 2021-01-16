@@ -10,7 +10,8 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "Message/catch_mpi_main.hpp"
+#include "catch.hpp"
+#include "Message/Communicate.h"
 
 namespace qmcplusplus
 {
@@ -18,7 +19,7 @@ TEST_CASE("test_communicate_split_one", "[message]")
 {
   Communicate* c = OHMMS::Controller;
 
-  Communicate* c2 = new Communicate(*c, 1);
+  auto c2 = std::make_unique<Communicate>(*c, 1);
 
   REQUIRE(c2->size() == c->size());
   REQUIRE(c2->rank() == c->rank());

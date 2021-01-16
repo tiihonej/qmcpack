@@ -3,9 +3,36 @@
 import numpy as np
 import versions
 import testing
-from testing import value_eq,object_eq,object_diff
+from testing import value_eq as value_eq_orig
+from testing import object_eq as object_eq_orig
+from testing import object_diff as object_diff_orig
 
-associated_files = dict()
+
+struct_atol = 1e-10
+
+def value_eq(*args,**kwargs):
+    if 'atol' not in kwargs:
+        kwargs['atol'] = struct_atol
+    #end if
+    return value_eq_orig(*args,**kwargs)
+#end def value_eq
+
+def object_eq(*args,**kwargs):
+    if 'atol' not in kwargs:
+        kwargs['atol'] = struct_atol
+    #end if
+    return object_eq_orig(*args,**kwargs)
+#end def object_eq
+
+def object_diff(*args,**kwargs):
+    if 'atol' not in kwargs:
+        kwargs['atol'] = struct_atol
+    #end if
+    return object_diff_orig(*args,**kwargs)
+#end def object_diff
+
+
+associated_files     = dict()
 reference_inputs     = dict()
 reference_structures = dict()
 generated_structures = dict()
@@ -189,7 +216,7 @@ def get_generated_structures():
     if len(generated_structures)==0:
         ref_in = get_reference_inputs()
         gen = generated_structures
-        for name,inputs in ref_in.iteritems():
+        for name,inputs in ref_in.items():
             gen[name] = generate_structure(**inputs)
         #end for
     #end if
@@ -202,7 +229,7 @@ def get_crystal_structures():
     from structure import Crystal,generate_structure
     if len(crystal_structures)==0:
         crys = crystal_structures
-        for (latt,cell),inputs in Crystal.known_crystals.iteritems():
+        for (latt,cell),inputs in Crystal.known_crystals.items():
             s = generate_structure(structure=latt,cell=cell)
             crys[latt+'_'+cell] = s
         #end for
@@ -302,6 +329,70 @@ def test_change_units():
     assert(value_eq(s.pos[-1],np.array([2.6775,2.6775,0.8925])))
     s.change_units('B')
     assert(value_eq(s.pos[-1],np.array([5.05974172,5.05974172,1.68658057])))
+#end def test_change_units
+
+
+
+def test_rotate():
+    import numpy as np
+    ref = get_reference_structures()
+    s0 = ref.CuO_prim.copy()
+    s1 = ref.CuO_prim.copy()
+
+    # Test the various parameter choices in the case that rp is given
+    # Perform rotation taking x-axis to x-axis (original positions should be found)
+    s1.rotate('x','x')
+    assert(value_eq(s1.pos,s0.pos))
+    assert(value_eq(s1.axes,s0.axes))
+    assert(value_eq(s1.kaxes,s0.kaxes))
+    # Perform active rotation taking x-coords to y-coords
+    s1.rotate([1,0,0],[0,1,0])
+    assert(value_eq(s1.pos,np.array([-s0.pos[:,1],s0.pos[:,0],s0.pos[:,2]]).T))
+    assert(value_eq(s1.axes,np.array([-s0.axes[:,1],s0.axes[:,0],s0.axes[:,2]]).T))
+    assert(value_eq(s1.kaxes,np.array([-s0.kaxes[:,1],s0.kaxes[:,0],s0.kaxes[:,2]]).T))
+    # Perform passive rotation taking x-axis to y-axis (original positions should be found)
+    s1.rotate('x','y',passive=True)
+    assert(value_eq(s1.pos,s0.pos))
+    assert(value_eq(s1.axes,s0.axes))
+    assert(value_eq(s1.kaxes,s0.kaxes))
+    # Perform active rotation about z-axis by an angle pi/2
+    s1.rotate('z',np.pi/2.0)
+    assert(value_eq(s1.pos,np.array([-s0.pos[:,1],s0.pos[:,0],s0.pos[:,2]]).T))
+    assert(value_eq(s1.axes,np.array([-s0.axes[:,1],s0.axes[:,0],s0.axes[:,2]]).T))
+    assert(value_eq(s1.kaxes,np.array([-s0.kaxes[:,1],s0.kaxes[:,0],s0.kaxes[:,2]]).T))
+    # Perform active rotation taking y-coords to x-coords (original positions should be found)
+    s1.rotate('y',[1,0,0])
+    assert(value_eq(s1.pos[-1],s0.pos[-1]))
+    assert(value_eq(s1.axes[-1],s0.axes[-1]))
+    assert(value_eq(s1.kaxes[-1],s0.kaxes[-1]))
+    # Perform active rotation taking a0-coords to a2-coords
+    s1.rotate(s0.axes[0],s0.axes[2])
+    assert(value_eq(s1.pos[-1],np.array([-2.15536928,3.46035669,0.86507139])))
+    assert(value_eq(s1.axes[-1],np.array([-3.91292278,3.02549423,-1.35344154])))
+    assert(value_eq(s1.kaxes[-1],np.array([-0.90768302,0.83458438,-0.15254555])))
+    # Perform active rotation taking a2-coords to a0-coords (original positions should be found)
+    s1.rotate('a2','a0')
+    assert(value_eq(s1.pos,s0.pos))
+    assert(value_eq(s1.axes,s0.axes))
+    assert(value_eq(s1.kaxes,s0.kaxes))
+
+    # Test the case where rp is not given
+    # Perform active rotation taking a2-coords to a0-coords
+    R = [[0.2570157723433977, 0.6326366344635742,-0.7305571719594085], 
+         [0.4370696746690278, 0.5981289557203555, 0.6717230469572912], 
+         [0.8619240060767753,-0.4919478031900122,-0.12277771249328594]]
+    s1.rotate(R)
+    assert(value_eq(s1.pos[-1],np.array([-2.15536928,3.46035669,0.86507139])))
+    assert(value_eq(s1.axes[-1],np.array([-3.91292278,3.02549423,-1.35344154])))
+    assert(value_eq(s1.kaxes[-1],np.array([-0.90768302,0.83458438,-0.15254555])))
+
+    # A final test which places the structure back into its original form
+    # Perform passive rotation taking a2-coords to a0-coords (original positions should be found)
+    s1.rotate([-0.5871158698555267, -0.8034668669004766, -0.09867091342903483],1.7050154439645373,passive=True)
+    assert(value_eq(s1.pos,s0.pos))
+    assert(value_eq(s1.axes,s0.axes))
+    assert(value_eq(s1.kaxes,s0.kaxes))
+
 #end def test_change_units
 
 
@@ -579,6 +670,7 @@ def test_read_write():
 
     # Read a POSCAR file
     d8_poscar = read_structure(poscar_file)
+
     assert(structure_same(d8_poscar,d8))
 #end def test_read_write
 
@@ -1365,3 +1457,48 @@ def test_interpolate():
     assert(value_eq(Cr_positions,Cr_positions_ref))
 
 #end def test_interpolate
+
+
+
+if versions.spglib_available:
+    def test_point_group_operations():
+        from structure import generate_structure,Crystal
+
+        nrotations = dict(
+            Ca2CuO3    =  8,
+            CaO        = 48,
+            Cl2Ca2CuO2 = 16,
+            CuO        =  2,
+            CuO2_plane = 16,
+            La2CuO4    =  2,
+            NaCl       = 48,
+            ZnO        =  6,
+            calcium    = 48,
+            copper     = 48,
+            diamond    = 24,
+            graphene   = 12,
+            oxygen     =  4,
+            rocksalt   = 48,
+            wurtzite   =  6,
+            )
+
+        for struct,cell in sorted(Crystal.known_crystals.keys()):
+            if cell!='prim':
+                continue
+            #end if
+
+            s = generate_structure(
+                structure = struct,
+                cell      = cell,
+                )
+                
+            rotations = s.point_group_operations()
+            assert(struct in nrotations)
+            assert(len(rotations)==nrotations[struct])
+
+            valid = s.check_point_group_operations(rotations,exit=False)
+            assert(valid)
+        #end for
+
+    #end def test_point_group_operations
+#end if

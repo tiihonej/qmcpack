@@ -14,7 +14,7 @@
 
 #ifndef QMCPLUSPLUS_MOMENTUM_HAMILTONIAN_H
 #define QMCPLUSPLUS_MOMENTUM_HAMILTONIAN_H
-#include <QMCHamiltonians/OperatorBase.h>
+#include "QMCHamiltonians/OperatorBase.h"
 namespace qmcplusplus
 {
 class MomentumEstimator : public OperatorBase
@@ -39,12 +39,12 @@ public:
   void resize(const std::vector<PosType>& kin, const int Min);
   ///number of samples
   int M;
-  ///normalization factor for n(k)
-  RealType norm_nofK;
   ///reference to the trial wavefunction for ratio evaluations
   TrialWaveFunction& refPsi;
   ///lattice vector
   ParticleSet::ParticleLayout_t Lattice;
+  ///normalization factor for n(k)
+  RealType norm_nofK;
   ///random generator
   RandomGenerator_t myRNG;
   ///sample positions

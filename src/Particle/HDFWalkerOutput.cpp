@@ -14,19 +14,19 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-/** @file HDFWalkerOuput.cpp
+/** @file
  * @brief definition  of HDFWalkerOuput  and other support class and functions
  */
-#include "Particle/HDFWalkerOutput.h"
+#include "HDFWalkerOutput.h"
 #include "Utilities/IteratorUtility.h"
 #include "OhmmsData/FileUtility.h"
-#include "HDFVersion.h"
+#include "hdf/HDFVersion.h"
 #include <numeric>
 #include <iostream>
 #include <sstream>
-#include <Message/Communicate.h>
-#include <mpi/collectives.h>
-#include <io/hdf_hyperslab.h>
+#include "Message/Communicate.h"
+#include "mpi/collectives.h"
+#include "hdf/hdf_hyperslab.h"
 
 namespace qmcplusplus
 {
@@ -53,10 +53,10 @@ namespace qmcplusplus
 HDFWalkerOutput::HDFWalkerOutput(MCWalkerConfiguration& W, const std::string& aroot, Communicate* c)
     : appended_blocks(0),
       number_of_walkers(0),
-      currentConfigNumber(0),
       number_of_backups(0),
       max_number_of_backups(4),
       myComm(c),
+      currentConfigNumber(0),
       RootName(aroot)
 //       , fw_out(myComm)
 {

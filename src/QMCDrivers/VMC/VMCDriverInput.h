@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2019 QMCPACK developers.
+// Copyright (c) 2020 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
@@ -36,7 +36,7 @@ protected:
    *  Do not write out blocks of gets for variables like this
    *  there is are code_generation tools in QMCPACK_ROOT/utils/code_tools
    */
-  bool use_drift_ = true;
+  bool use_drift_                  = true;
   IndexType samples_per_thread_    = -1;
   IndexType samples_               = -1;
   IndexType steps_between_samples_ = -1;

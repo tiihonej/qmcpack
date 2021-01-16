@@ -11,13 +11,13 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include <QMCHamiltonians/DensityMatrices1B.h>
-#include <OhmmsData/AttributeSet.h>
-#include <QMCWaveFunctions/TrialWaveFunction.h>
-#include <Numerics/MatrixOperators.h>
-#include <Utilities/IteratorUtility.h>
-#include <Utilities/string_utils.h>
-#include <QMCWaveFunctions/SPOSetBuilderFactory.h>
+#include "DensityMatrices1B.h"
+#include "OhmmsData/AttributeSet.h"
+#include "QMCWaveFunctions/TrialWaveFunction.h"
+#include "Numerics/MatrixOperators.h"
+#include "Utilities/IteratorUtility.h"
+#include "Utilities/string_utils.h"
+#include "QMCWaveFunctions/WaveFunctionFactory.h"
 
 
 namespace qmcplusplus
@@ -27,15 +27,15 @@ using MatrixOperators::product;
 using MatrixOperators::product_AtB;
 
 
-DensityMatrices1B::DensityMatrices1B(ParticleSet& P, TrialWaveFunction& psi, ParticleSet* Pcl)
-    : Lattice(P.Lattice), Pq(P), Psi(psi), Pc(Pcl)
+DensityMatrices1B::DensityMatrices1B(ParticleSet& P, TrialWaveFunction& psi, ParticleSet* Pcl, const WaveFunctionFactory& factory)
+    : Lattice(P.Lattice), Psi(psi), Pq(P), Pc(Pcl), wf_factory_(factory)
 {
   reset();
 }
 
 
 DensityMatrices1B::DensityMatrices1B(DensityMatrices1B& master, ParticleSet& P, TrialWaveFunction& psi)
-    : OperatorBase(master), Lattice(P.Lattice), Pq(P), Psi(psi), Pc(master.Pc)
+    : OperatorBase(master), Lattice(P.Lattice), Psi(psi), Pq(P), Pc(master.Pc), wf_factory_(master.wf_factory_)
 {
   reset();
   set_state(master);
@@ -252,7 +252,7 @@ void DensityMatrices1B::set_state(xmlNodePtr cur)
 
   for (int i = 0; i < sposets.size(); ++i)
   {
-    basis_functions.add(get_sposet(sposets[i]));
+    basis_functions.add(wf_factory_.getSPOSet(sposets[i]));
   }
   basis_size = basis_functions.size();
 
@@ -1065,7 +1065,7 @@ inline void DensityMatrices1B::density_drift(const PosType& r, RealType& dens, P
     Value_t bc       = qmcplusplus::conj(b);
     dens += std::abs(bc * b);
     for (int d = 0; d < DIM; ++d)
-      drift[d] += prod_real(bc, bg[d]);
+      drift[d] += std::real(bc * bg[d]);
   }
   drift *= timestep / dens;
   dens /= basis_size;
@@ -1216,7 +1216,7 @@ inline void DensityMatrices1B::integrate(ParticleSet& P, int n)
 inline void DensityMatrices1B::update_basis(const PosType& r)
 {
   Pq.makeMove(0, r - Pq.R[0]);
-  basis_functions.evaluate(Pq, 0, basis_values);
+  basis_functions.evaluateValue(Pq, 0, basis_values);
   Pq.rejectMove(0);
   for (int i = 0; i < basis_size; ++i)
     basis_values[i] *= basis_norms[i];
@@ -1226,7 +1226,7 @@ inline void DensityMatrices1B::update_basis(const PosType& r)
 inline void DensityMatrices1B::update_basis_d012(const PosType& r)
 {
   Pq.makeMove(0, r - Pq.R[0]);
-  basis_functions.evaluate(Pq, 0, basis_values, basis_gradients, basis_laplacians);
+  basis_functions.evaluateVGL(Pq, 0, basis_values, basis_gradients, basis_laplacians);
   Pq.rejectMove(0);
   for (int i = 0; i < basis_size; ++i)
     basis_values[i] *= basis_norms[i];

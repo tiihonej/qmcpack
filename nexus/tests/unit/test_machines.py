@@ -1,6 +1,6 @@
 
 import testing
-from testing import value_eq,object_eq,failed,TestFailed
+from testing import value_eq,object_eq,failed,FailedTest
 from testing import divert_nexus_log,restore_nexus_log
 
 
@@ -131,8 +131,8 @@ def test_job_init():
     # empty init should fail w/o implicit or explicit machine
     try:
         job()
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
@@ -298,48 +298,48 @@ def test_machine_virtuals():
     arg1 = None
     try:
         Machine.query_queue(arg0)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
     #end try
     try:
         Machine.submit_jobs(arg0)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
     #end try
     try:
         Machine.process_job(arg0,arg1)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
     #end try
     try:
         Machine.process_job_options(arg0,arg1)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
     #end try
     try:
         Machine.write_job(arg0,arg1,file=False)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
     #end try
     try:
         Machine.submit_job(arg0,arg1)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
@@ -370,16 +370,16 @@ def test_machine_add():
     assert(isinstance(mtest,Machine))
     try:
         Machine.add(mtest)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
     #end try
     try:
         Machine.add('my_machine')
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
@@ -398,16 +398,16 @@ def test_machine_get():
     assert(id(m)==id(mtest))
     try:
         Machine.get(m)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
     #end try
     try:
         Machine.get('some_nonexistant_machine')
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
@@ -421,16 +421,16 @@ def test_machine_instantiation():
     # test guards against empty/invalid instantiation
     try:
         Machine()
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
     #end try
     try:
         Machine(123)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
@@ -447,8 +447,8 @@ def test_machine_instantiation():
     # test guards against multiple instantiation
     try:
         Machine(name=test_name)
-        raise TestFailed
-    except TestFailed:
+        raise FailedTest
+    except FailedTest:
         failed()
     except:
         None
@@ -699,7 +699,15 @@ def test_supercomputer_scheduling():
 export OMP_NUM_THREADS=8
 aprun -e OMP_NUM_THREADS=8 -d 8 -cc depth -j 1 -n 16 -N 8 echo run'''
     wj = sc.write_job(j)
-    assert(wj.strip()==ref_wj)
+    for flag in refro:
+        assert(flag in wj)
+    #end for
+    assert('aprun ' in wj)
+    assert(' echo run' in wj)
+    def scomp(s):
+        return s.strip().rsplit('\n',1)[0].strip()
+    #end if
+    assert(scomp(wj)==scomp(ref_wj))
 
 
     # test add_job()
@@ -721,7 +729,13 @@ aprun -e OMP_NUM_THREADS=8 -d 8 -cc depth -j 1 -n 16 -N 8 echo run'''
 
     subfile_path = os.path.join(tpath,j.subfile)
     assert(os.path.exists(subfile_path))
-    assert(open(subfile_path,'r').read().strip()==ref_wj)
+    wj = open(subfile_path,'r').read().strip()
+    assert('aprun ' in wj)
+    assert(' echo run' in wj)
+    def scomp(s):
+        return s.strip().rsplit('\n',1)[0].strip()
+    #end if
+    assert(scomp(wj)==scomp(ref_wj))
 
 
     # test sub_command()
@@ -903,6 +917,30 @@ def test_process_job():
         machine_idempotent = True
         for job_input in job_inputs:
             job = Job(machine=machine.name,**job_input)
+            assert(isinstance(job.processes,int))
+            assert(isinstance(job.nodes,int))
+            if job.processes_per_node is not None:
+                assert(job.processes==job.nodes*job.processes_per_node)
+            #end if
+            if not job.serial:
+                nodes_input = 'nodes' in job_input
+                cores_input = 'cores' in job_input
+                if job.processes%job.nodes==0:
+                    assert(job.processes_per_node is not None)
+                    assert(job.processes==job.nodes*job.processes_per_node)
+                #end if
+                if nodes_input:
+                    assert(job.nodes==job_input.nodes)
+                #end if
+                if nodes_input and cores_input:
+                    assert(job.cores<=job_input.cores)
+                elif nodes_input:
+                    assert(job.cores%machine.cores_per_node==0)
+                    assert(job.cores==job.nodes*machine.cores_per_node)
+                elif cores_input:
+                    assert(job.cores==job_input.cores)
+                #end if
+            #end if
             job2 = obj.copy(job)
             machine.process_job(job2)
             job_idempotent = object_eq(job,job2)
@@ -943,7 +981,8 @@ def test_job_run_command():
     Machine.allow_warnings = False
 
     def parse_job_command(command):
-        tokens = command.replace(':',' ').split()
+        tokens = command.split()
+        #tokens = command.replace(':',' ').split()
         launcher = tokens[0]
         exe = tokens[-1]
         args = []
@@ -954,8 +993,14 @@ def test_job_run_command():
                 options[t] = None
                 last_option = t
             elif last_option is not None:
-                options[last_option] = t
-                last_option = None
+                if options[last_option] is None:
+                    options[last_option] = {t}
+                else:
+                    options[last_option].add(t)
+                #end if
+                if last_option!='--envs':
+                    last_option = None
+                #end if
             else:
                 args.append(t)
             #end if
@@ -982,6 +1027,12 @@ def test_job_run_command():
         ('amos'           , 'n2_t2'         ) : 'srun test.x',
         ('amos'           , 'n2_t2_e'       ) : 'srun test.x',
         ('amos'           , 'n2_t2_p2'      ) : 'srun test.x',
+        ('attaway'        , 'n1'            ) : 'srun test.x',
+        ('attaway'        , 'n1_p1'         ) : 'srun test.x',
+        ('attaway'        , 'n2'            ) : 'srun test.x',
+        ('attaway'        , 'n2_t2'         ) : 'srun test.x',
+        ('attaway'        , 'n2_t2_e'       ) : 'srun test.x',
+        ('attaway'        , 'n2_t2_p2'      ) : 'srun test.x',
         ('bluewaters_xe'  , 'n1'            ) : 'aprun -n 32 test.x',
         ('bluewaters_xe'  , 'n1_p1'         ) : 'aprun -n 1 test.x',
         ('bluewaters_xe'  , 'n2'            ) : 'aprun -n 64 test.x',
@@ -997,15 +1048,21 @@ def test_job_run_command():
         ('cades'          , 'n1'            ) : 'mpirun -np 36 test.x',
         ('cades'          , 'n1_p1'         ) : 'mpirun -np 1 test.x',
         ('cades'          , 'n2'            ) : 'mpirun -np 72 test.x',
-        ('cades'          , 'n2_t2'         ) : 'mpirun -np 36 --npersocket 9 test.x',
-        ('cades'          , 'n2_t2_e'       ) : 'mpirun -np 36 --npersocket 9 test.x',
-        ('cades'          , 'n2_t2_p2'      ) : 'mpirun -np 4 --npersocket 1 test.x',
-        ('cetus'          , 'n1'            ) : 'runjob --np 16 -p 16 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 : test.x',
-        ('cetus'          , 'n1_p1'         ) : 'runjob --np 1 -p 1 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 : test.x',
-        ('cetus'          , 'n2'            ) : 'runjob --np 32 -p 16 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 : test.x',
-        ('cetus'          , 'n2_t2'         ) : 'runjob --np 16 -p 8 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=2 : test.x',
-        ('cetus'          , 'n2_t2_e'       ) : 'runjob --np 16 -p 8 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=2 ENV_VAR=1 : test.x',
-        ('cetus'          , 'n2_t2_p2'      ) : 'runjob --np 4 -p 2 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=2 : test.x',
+        ('cades'          , 'n2_t2'         ) : 'mpirun -np 36 test.x',
+        ('cades'          , 'n2_t2_e'       ) : 'mpirun -np 36 test.x',
+        ('cades'          , 'n2_t2_p2'      ) : 'mpirun -np 4 test.x',
+        ('cades_moab'     , 'n1'            ) : 'mpirun -np 36 test.x',
+        ('cades_moab'     , 'n1_p1'         ) : 'mpirun -np 1 test.x',
+        ('cades_moab'     , 'n2'            ) : 'mpirun -np 72 test.x',
+        ('cades_moab'     , 'n2_t2'         ) : 'mpirun --npersocket 9 -np 36 test.x',
+        ('cades_moab'     , 'n2_t2_e'       ) : 'mpirun --npersocket 9 -np 36 test.x',
+        ('cades_moab'     , 'n2_t2_p2'      ) : 'mpirun --npersocket 1 -np 4 test.x',
+        ('cetus'          , 'n1'            ) : 'runjob --envs OMP_NUM_THREADS=1 --np 16 -p 16 --verbose=INFO $LOCARGS : test.x',
+        ('cetus'          , 'n1_p1'         ) : 'runjob --envs OMP_NUM_THREADS=1 --np 1 -p 1 --verbose=INFO $LOCARGS : test.x',
+        ('cetus'          , 'n2'            ) : 'runjob --envs OMP_NUM_THREADS=1 --np 32 -p 16 --verbose=INFO $LOCARGS : test.x',
+        ('cetus'          , 'n2_t2'         ) : 'runjob --envs OMP_NUM_THREADS=2 --np 16 -p 8 --verbose=INFO $LOCARGS : test.x',
+        ('cetus'          , 'n2_t2_e'       ) : 'runjob --envs OMP_NUM_THREADS=2 ENV_VAR=1 --np 16 -p 8 --verbose=INFO $LOCARGS : test.x',
+        ('cetus'          , 'n2_t2_p2'      ) : 'runjob --envs OMP_NUM_THREADS=2 --np 4 -p 2 --verbose=INFO $LOCARGS : test.x',
         ('chama'          , 'n1'            ) : 'srun test.x',
         ('chama'          , 'n1_p1'         ) : 'srun test.x',
         ('chama'          , 'n2'            ) : 'srun test.x',
@@ -1024,6 +1081,12 @@ def test_job_run_command():
         ('cori'           , 'n2_t2'         ) : 'srun test.x',
         ('cori'           , 'n2_t2_e'       ) : 'srun test.x',
         ('cori'           , 'n2_t2_p2'      ) : 'srun test.x',
+        ('eclipse'        , 'n1'            ) : 'srun test.x',
+        ('eclipse'        , 'n1_p1'         ) : 'srun test.x',
+        ('eclipse'        , 'n2'            ) : 'srun test.x',
+        ('eclipse'        , 'n2_t2'         ) : 'srun test.x',
+        ('eclipse'        , 'n2_t2_e'       ) : 'srun test.x',
+        ('eclipse'        , 'n2_t2_p2'      ) : 'srun test.x',
         ('edison'         , 'n1'            ) : 'srun test.x',
         ('edison'         , 'n1_p1'         ) : 'srun test.x',
         ('edison'         , 'n2'            ) : 'srun test.x',
@@ -1066,30 +1129,24 @@ def test_job_run_command():
         ('matisse'        , 'n2_t2'         ) : 'mpirun -np 16 test.x',
         ('matisse'        , 'n2_t2_e'       ) : 'mpirun -np 16 test.x',
         ('matisse'        , 'n2_t2_p2'      ) : 'mpirun -np 4 test.x',
-        ('mira'           , 'n1'            ) : 'runjob --np 16 -p 16 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 : test.x',
-        ('mira'           , 'n1_p1'         ) : 'runjob --np 1 -p 1 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 : test.x',
-        ('mira'           , 'n2'            ) : 'runjob --np 32 -p 16 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 : test.x',
-        ('mira'           , 'n2_t2'         ) : 'runjob --np 16 -p 8 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=2 : test.x',
-        ('mira'           , 'n2_t2_e'       ) : 'runjob --np 16 -p 8 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=2 ENV_VAR=1 : test.x',
-        ('mira'           , 'n2_t2_p2'      ) : 'runjob --np 4 -p 2 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=2 : test.x',
+        ('mira'           , 'n1'            ) : 'runjob --envs OMP_NUM_THREADS=1 --np 16 -p 16 --verbose=INFO $LOCARGS : test.x',
+        ('mira'           , 'n1_p1'         ) : 'runjob --envs OMP_NUM_THREADS=1 --np 1 -p 1 --verbose=INFO $LOCARGS : test.x',
+        ('mira'           , 'n2'            ) : 'runjob --envs OMP_NUM_THREADS=1 --np 32 -p 16 --verbose=INFO $LOCARGS : test.x',
+        ('mira'           , 'n2_t2'         ) : 'runjob --envs OMP_NUM_THREADS=2 --np 16 -p 8 --verbose=INFO $LOCARGS : test.x',
+        ('mira'           , 'n2_t2_e'       ) : 'runjob --envs OMP_NUM_THREADS=2 ENV_VAR=1 --np 16 -p 8 --verbose=INFO $LOCARGS : test.x',
+        ('mira'           , 'n2_t2_p2'      ) : 'runjob --envs OMP_NUM_THREADS=2 --np 4 -p 2 --verbose=INFO $LOCARGS : test.x',
         ('oic5'           , 'n1'            ) : 'mpirun -np 32 test.x',
         ('oic5'           , 'n1_p1'         ) : 'mpirun -np 1 test.x',
         ('oic5'           , 'n2'            ) : 'mpirun -np 64 test.x',
         ('oic5'           , 'n2_t2'         ) : 'mpirun -np 32 test.x',
         ('oic5'           , 'n2_t2_e'       ) : 'mpirun -np 32 test.x',
         ('oic5'           , 'n2_t2_p2'      ) : 'mpirun -np 4 test.x',
-        ('redsky'         , 'n1'            ) : 'srun test.x',
-        ('redsky'         , 'n1_p1'         ) : 'srun test.x',
-        ('redsky'         , 'n2'            ) : 'srun test.x',
-        ('redsky'         , 'n2_t2'         ) : 'srun test.x',
-        ('redsky'         , 'n2_t2_e'       ) : 'srun test.x',
-        ('redsky'         , 'n2_t2_p2'      ) : 'srun test.x',
-        ('serrano'        , 'n1'            ) : 'srun test.x',
-        ('serrano'        , 'n1_p1'         ) : 'srun test.x',
-        ('serrano'        , 'n2'            ) : 'srun test.x',
-        ('serrano'        , 'n2_t2'         ) : 'srun test.x',
-        ('serrano'        , 'n2_t2_e'       ) : 'srun test.x',
-        ('serrano'        , 'n2_t2_p2'      ) : 'srun test.x',
+        ('rhea'           , 'n1'            ) : 'srun -N 1 -n 16 test.x',
+        ('rhea'           , 'n1_p1'         ) : 'srun -N 1 -n 1 test.x',
+        ('rhea'           , 'n2'            ) : 'srun -N 2 -n 32 test.x',
+        ('rhea'           , 'n2_t2'         ) : 'srun -N 2 -n 16 -c 2 --cpu-bind=cores test.x',
+        ('rhea'           , 'n2_t2_e'       ) : 'srun -N 2 -n 16 -c 2 --cpu-bind=cores test.x',
+        ('rhea'           , 'n2_t2_p2'      ) : 'srun -N 2 -n 4 -c 2 --cpu-bind=cores test.x',
         ('skybridge'      , 'n1'            ) : 'srun test.x',
         ('skybridge'      , 'n1_p1'         ) : 'srun test.x',
         ('skybridge'      , 'n2'            ) : 'srun test.x',
@@ -1128,12 +1185,12 @@ def test_job_run_command():
         ('supermucng'     , 'n2_t2'         ) : 'mpiexec -n 48 test.x',
         ('supermucng'     , 'n2_t2_e'       ) : 'mpiexec -n 48 test.x',
         ('supermucng'     , 'n2_t2_p2'      ) : 'mpiexec -n 4 test.x',
-        ('taub'           , 'n1'            ) : 'mpirun -np 12 test.x',
-        ('taub'           , 'n1_p1'         ) : 'mpirun -np 1 test.x',
-        ('taub'           , 'n2'            ) : 'mpirun -np 24 test.x',
-        ('taub'           , 'n2_t2'         ) : 'mpirun -np 12 test.x',
-        ('taub'           , 'n2_t2_e'       ) : 'mpirun -np 12 test.x',
-        ('taub'           , 'n2_t2_p2'      ) : 'mpirun -np 4 test.x',
+        ('golub'           , 'n1'            ) : 'mpirun -np 12 test.x',
+        ('golub'           , 'n1_p1'         ) : 'mpirun -np 1 test.x',
+        ('golub'           , 'n2'            ) : 'mpirun -np 24 test.x',
+        ('golub'           , 'n2_t2'         ) : 'mpirun -np 12 test.x',
+        ('golub'           , 'n2_t2_e'       ) : 'mpirun -np 12 test.x',
+        ('golub'           , 'n2_t2_p2'      ) : 'mpirun -np 4 test.x',
         ('theta'          , 'n1'            ) : 'aprun -e OMP_NUM_THREADS=1 -d 1 -cc depth -j 1 -n 64 -N 64 test.x',
         ('theta'          , 'n1_p1'         ) : 'aprun -e OMP_NUM_THREADS=1 -d 1 -cc depth -j 1 -n 1 -N 1 test.x',
         ('theta'          , 'n2'            ) : 'aprun -e OMP_NUM_THREADS=1 -d 1 -cc depth -j 1 -n 128 -N 64 test.x',
@@ -1158,12 +1215,12 @@ def test_job_run_command():
         ('uno'            , 'n2_t2'         ) : 'srun test.x',
         ('uno'            , 'n2_t2_e'       ) : 'srun test.x',
         ('uno'            , 'n2_t2_p2'      ) : 'srun test.x',
-        ('vesta'          , 'n1'            ) : 'runjob --np 16 -p 16 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 : test.x',
-        ('vesta'          , 'n1_p1'         ) : 'runjob --np 1 -p 1 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 : test.x',
-        ('vesta'          , 'n2'            ) : 'runjob --np 32 -p 16 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 : test.x',
-        ('vesta'          , 'n2_t2'         ) : 'runjob --np 16 -p 8 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=2 : test.x',
-        ('vesta'          , 'n2_t2_e'       ) : 'runjob --np 16 -p 8 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=2 ENV_VAR=1 : test.x',
-        ('vesta'          , 'n2_t2_p2'      ) : 'runjob --np 4 -p 2 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=2 : test.x',
+        ('vesta'          , 'n1'            ) : 'runjob --envs OMP_NUM_THREADS=1 --np 16 -p 16 --verbose=INFO $LOCARGS : test.x',
+        ('vesta'          , 'n1_p1'         ) : 'runjob --envs OMP_NUM_THREADS=1 --np 1 -p 1 --verbose=INFO $LOCARGS : test.x',
+        ('vesta'          , 'n2'            ) : 'runjob --envs OMP_NUM_THREADS=1 --np 32 -p 16 --verbose=INFO $LOCARGS : test.x',
+        ('vesta'          , 'n2_t2'         ) : 'runjob --envs OMP_NUM_THREADS=2 --np 16 -p 8 --verbose=INFO $LOCARGS : test.x',
+        ('vesta'          , 'n2_t2_e'       ) : 'runjob --envs OMP_NUM_THREADS=2 ENV_VAR=1 --np 16 -p 8 --verbose=INFO $LOCARGS : test.x',
+        ('vesta'          , 'n2_t2_p2'      ) : 'runjob --envs OMP_NUM_THREADS=2 --np 4 -p 2 --verbose=INFO $LOCARGS : test.x',
         })
 
     if testing.global_data['job_ref_table']:
@@ -1215,7 +1272,7 @@ def test_job_run_command():
             #end if
             ref_command = job_run_ref[name,jtype]
             if not job_commands_equal(command,ref_command):
-                failed('Job.run_command for machine "{0}" does not match the reference\njob inputs: {1}\nreference command: {2}\nincorrect command: {3}'.format(name,job_inputs[jtype],ref_command,command))
+                failed('Job.run_command for machine "{0}" does not match the reference\njob inputs:\n{1}\nreference command: {2}\nincorrect command: {3}'.format(name,job_inputs[jtype],ref_command,command))
             #end for
         #end for
     #end for
@@ -1257,12 +1314,17 @@ def test_job_run_command():
         assert(ns2 in rc2)
         # verify that text on either side of node count 
         # agrees for original and split commands
-        rcl ,rcr  = rc.split(ns,1)
-        rc1l,rc1r = rc1.split(ns1,1)
-        rc2l,rc2r = rc2.split(ns2,1)
-        rcf  = rcl+' '+rcr
-        rc1f = rc1l+' '+rc1r
-        rc2f = rc2l+' '+rc2r
+        assert(len(rc1)==len(rc))
+        assert(len(rc2)==len(rc))
+
+        loc = rc.find(ns)+1
+        assert(rc[loc]=='4')
+        assert(rc1[loc]=='1')
+        assert(rc2[loc]=='3')
+        rcf  = rc[:loc]+' '+rc[loc+1:]
+        rc1f = rc1[:loc]+' '+rc1[loc+1:]
+        rc2f = rc2[:loc]+' '+rc2[loc+1:]
+
         assert(job_commands_equal(rcf,rc1f))
         assert(job_commands_equal(rcf,rc2f))
     #end for
@@ -1296,6 +1358,20 @@ def test_write_job():
 export OMP_NUM_THREADS=1
 export ENV_VAR=1
 srun test.x''',
+        attaway = '''#!/bin/bash
+#SBATCH -p batch
+#SBATCH --job-name jobname
+#SBATCH --account=ABC123
+#SBATCH -N 2
+#SBATCH --ntasks-per-node=36
+#SBATCH --cpus-per-task=1
+#SBATCH -t 06:30:00
+#SBATCH -o test.out
+#SBATCH -e test.err
+
+export OMP_NUM_THREADS=1
+export ENV_VAR=1
+srun test.x''',
         bluewaters_xe = '''#!/bin/bash
 #PBS -N jobname
 #PBS -l walltime=06:30:00
@@ -1325,6 +1401,23 @@ export OMP_NUM_THREADS=1
 export ENV_VAR=1
 aprun -n 32 test.x''',
         cades = '''#!/bin/bash
+#SBATCH -A ABC123
+#SBATCH -p skylake
+#SBATCH -J jobname
+#SBATCH -t 06:30:00
+#SBATCH -N 2
+#SBATCH --ntasks-per-node=36
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=0
+#SBATCH -o test.out
+#SBATCH -e test.err
+#SBATCH --exclusive
+#SBATCH --export=ALL
+
+export ENV_VAR=1
+export OMP_NUM_THREADS=1
+mpirun -np 72 test.x''',
+        cades_moab = '''#!/bin/bash
 #PBS -A ABC123
 #PBS -W group_list=cades-ABC123
 #PBS -q skylake
@@ -1338,8 +1431,8 @@ aprun -n 32 test.x''',
 echo $PBS_O_WORKDIR
 cd $PBS_O_WORKDIR
 
-export OMP_NUM_THREADS=1
 export ENV_VAR=1
+export OMP_NUM_THREADS=1
 mpirun -np 72 test.x''',
         cetus = '''#!/bin/bash
 #COBALT -q default
@@ -1354,19 +1447,15 @@ echo "Cobalt location args: $LOCARGS" >&2
 
 runjob --np 32 -p 16 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 ENV_VAR=1 : test.x''',
         chama = '''#!/bin/bash
+#SBATCH -p batch
 #SBATCH --job-name jobname
 #SBATCH --account=ABC123
 #SBATCH -N 2
-#SBATCH --ntasks-per-node=32
+#SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=1
 #SBATCH -t 06:30:00
 #SBATCH -o test.out
 #SBATCH -e test.err
-
-module purge
-module add intel/intel-16.0.1.150
-module add libraries/intel-mkl-16.0.1.150
-module add mvapich2-intel-psm/1.7
 
 export OMP_NUM_THREADS=1
 export ENV_VAR=1
@@ -1395,6 +1484,20 @@ mpirun -np 24 test.x''',
 
 echo $SLURM_SUBMIT_DIR
 cd $SLURM_SUBMIT_DIR
+
+export OMP_NUM_THREADS=1
+export ENV_VAR=1
+srun test.x''',
+        eclipse = '''#!/bin/bash
+#SBATCH -p batch
+#SBATCH --job-name jobname
+#SBATCH --account=ABC123
+#SBATCH -N 2
+#SBATCH --ntasks-per-node=36
+#SBATCH --cpus-per-task=1
+#SBATCH -t 06:30:00
+#SBATCH -o test.out
+#SBATCH -e test.err
 
 export OMP_NUM_THREADS=1
 export ENV_VAR=1
@@ -1543,7 +1646,26 @@ cd $PBS_O_WORKDIR
 export OMP_NUM_THREADS=1
 export ENV_VAR=1
 mpirun -np 64 test.x''',
-        redsky = '''#!/bin/bash
+        rhea = '''#!/bin/bash
+#SBATCH --job-name jobname
+#SBATCH --account=ABC123
+#SBATCH -N 2
+#SBATCH -t 06:30:00
+#SBATCH -o test.out
+#SBATCH -e test.err
+
+cd $SLURM_SUBMIT_DIR
+
+echo JobID : $SLURM_JOBID 
+echo Number of nodes requested: $SLURM_JOB_NUM_NODES 
+echo List of nodes assigned to the job: $SLURM_NODELIST 
+
+
+export ENV_VAR=1
+export OMP_NUM_THREADS=1
+srun -N 2 -n 32 test.x''',
+        skybridge = '''#!/bin/bash
+#SBATCH -p batch
 #SBATCH --job-name jobname
 #SBATCH --account=ABC123
 #SBATCH -N 2
@@ -1553,51 +1675,11 @@ mpirun -np 64 test.x''',
 #SBATCH -o test.out
 #SBATCH -e test.err
 
-module purge
-module add intel/intel-16.0.1.150
-module add libraries/intel-mkl-16.0.1.150
-module add mvapich2-intel-psm/1.7
-
-export OMP_NUM_THREADS=1
-export ENV_VAR=1
-srun test.x''',
-        serrano = '''#!/bin/bash
-#SBATCH --job-name jobname
-#SBATCH --account=ABC123
-#SBATCH -N 2
-#SBATCH --ntasks-per-node=36
-#SBATCH --cpus-per-task=1
-#SBATCH -t 06:30:00
-#SBATCH -o test.out
-#SBATCH -e test.err
-
-module purge
-module add intel/16.0.3
-module add mkl/16.0
-module add mvapich2-intel-psm2/2.2rc1
-
-export OMP_NUM_THREADS=1
-export ENV_VAR=1
-srun test.x''',
-        skybridge = '''#!/bin/bash
-#SBATCH --job-name jobname
-#SBATCH --account=ABC123
-#SBATCH -N 2
-#SBATCH --ntasks-per-node=32
-#SBATCH --cpus-per-task=1
-#SBATCH -t 06:30:00
-#SBATCH -o test.out
-#SBATCH -e test.err
-
-module purge
-module add intel/intel-16.0.1.150
-module add libraries/intel-mkl-16.0.1.150
-module add mvapich2-intel-psm/1.7
-
 export OMP_NUM_THREADS=1
 export ENV_VAR=1
 srun test.x''',
         solo = '''#!/bin/bash
+#SBATCH -p batch
 #SBATCH --job-name jobname
 #SBATCH --account=ABC123
 #SBATCH -N 2
@@ -1606,11 +1688,6 @@ srun test.x''',
 #SBATCH -t 06:30:00
 #SBATCH -o test.out
 #SBATCH -e test.err
-
-module purge
-module add intel/16.0.3
-module add mkl/16.0
-module add mvapich2-intel-psm2/2.2rc1
 
 export OMP_NUM_THREADS=1
 export ENV_VAR=1
@@ -1685,7 +1762,7 @@ mpiexec -n 56 test.x''',
 export OMP_NUM_THREADS=1
 export ENV_VAR=1
 mpiexec -n 96 test.x''',
-        taub = '''#PBS -q cse
+        golub = '''#PBS -q secondary
 #PBS -N jobname
 #PBS -l nodes=2:ppn=12
 #PBS -l walltime=06:30:00
@@ -1696,8 +1773,8 @@ mpiexec -n 96 test.x''',
 cd ${PBS_O_WORKDIR}
 
 
-export OMP_NUM_THREADS=1
 export ENV_VAR=1
+export OMP_NUM_THREADS=1
 mpirun -np 24 test.x''',
         theta = '''#!/bin/bash
 #COBALT -q default
@@ -1740,20 +1817,15 @@ export OMP_NUM_THREADS=1
 export ENV_VAR=1
 mpirun -np 128 test.x >test.out 2>test.err''',
         uno = '''#!/bin/bash
+#SBATCH -p batch
 #SBATCH --job-name jobname
 #SBATCH --account=ABC123
 #SBATCH -N 2
-#SBATCH --ntasks-per-node=128
+#SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=1
 #SBATCH -t 06:30:00
 #SBATCH -o test.out
 #SBATCH -e test.err
-#SBATCH -p quad
-
-module purge
-module add intel/intel-16.0.1.150
-module add libraries/intel-mkl-16.0.1.150
-module add mvapich2-intel-psm/1.7
 
 export OMP_NUM_THREADS=1
 export ENV_VAR=1
@@ -1771,6 +1843,34 @@ echo "Cobalt location args: $LOCARGS" >&2
 
 runjob --np 32 -p 16 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 ENV_VAR=1 : test.x''',
         )
+
+    def process_job_file(jf):
+        jf = jf.strip()
+        lines = []
+        tokens = []
+        for line in jf.splitlines():
+            if len(line.strip())==0:
+                continue
+            #end if
+            if line.startswith('export'):
+                tokens.append(line)
+            else:
+                lines.append(line)
+            #end if
+        #end for
+        tokens.extend(lines.pop().split())
+        jo = obj(
+            lines  = lines,
+            tokens = set(tokens),
+            )
+        return jo
+    #end def process_job_file
+
+    def job_files_same(jf1,jf2):
+        jf1 = process_job_file(jf1)
+        jf2 = process_job_file(jf2)
+        return object_eq(jf1,jf2)
+    #end def job_files_same
 
     if testing.global_data['job_ref_table']:
         print('\n\n')
@@ -1808,7 +1908,7 @@ runjob --np 32 -p 16 $LOCARGS --verbose=INFO --envs OMP_NUM_THREADS=1 ENV_VAR=1 
             continue
         #end if
         ref_wj = job_write_ref[name]
-        assert(wj.strip()==ref_wj)
+        assert(job_files_same(wj,ref_wj))
     #end for
 
     Machine.allow_warnings = allow_warn

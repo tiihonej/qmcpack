@@ -39,14 +39,12 @@ struct CoulombPBCAB : public OperatorBase, public ForceBase
   typedef LRCoulombSingleton::RadFunctorType RadFunctorType;
   typedef LRHandlerType::mRealType mRealType;
 
-  typedef DistanceTableData::RowContainer RowContainerType;
-
   ///source particle set
   ParticleSet& PtclA;
   ///long-range Handler
-  LRHandlerType* AB;
+  std::unique_ptr<LRHandlerType> AB;
   ///long-range derivative handler
-  LRHandlerType* dAB;
+  std::unique_ptr<LRHandlerType> dAB;
   ///locator of the distance table
   const int myTableIndex;
   ///number of species of A particle set
@@ -117,8 +115,6 @@ struct CoulombPBCAB : public OperatorBase, public ForceBase
   //particle trace samples
   Array<TraceReal, 1>* Ve_sample;
   Array<TraceReal, 1>* Vi_sample;
-  Array<TraceReal, 1> Ve_samp_tmp;
-  Array<TraceReal, 1> Vi_samp_tmp;
   Array<TraceReal, 1> Ve_const;
   Array<TraceReal, 1> Vi_const;
 #endif
@@ -164,13 +160,6 @@ struct CoulombPBCAB : public OperatorBase, public ForceBase
   ///Creates the long-range handlers, then splines and stores it by particle and species for quick evaluation.
   void initBreakup(ParticleSet& P);
 
-  //Do these functions need to be kept?
-  Return_t evalConsts_orig(bool report = true);
-  Return_t evalSR_old(ParticleSet& P);
-  Return_t evalLR_old(ParticleSet& P);
-  Return_t evalConsts_old(bool report = true);
-  //
-
   ///Computes the short-range contribution to the coulomb energy.
   Return_t evalSR(ParticleSet& P);
   ///Computes the long-range contribution to the coulomb energy.
@@ -182,7 +171,7 @@ struct CoulombPBCAB : public OperatorBase, public ForceBase
   ///Evaluates madelung and background contributions to total energy.
   Return_t evalConsts(bool report = true);
   ///Adds a local pseudopotential channel "ppot" to all source species of type "groupID".
-  void add(int groupID, RadFunctorType* ppot);
+  void add(int groupID, std::unique_ptr<RadFunctorType>&& ppot);
 
   void addObservables(PropertySetType& plist, BufferType& collectables);
 

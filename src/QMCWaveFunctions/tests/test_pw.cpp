@@ -14,12 +14,9 @@
 
 #include "OhmmsData/Libxml2Doc.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
-#include "Lattice/ParticleBConds.h"
 #include "Particle/ParticleSet.h"
-#include "Particle/DistanceTableData.h"
-#include "QMCApp/ParticleSetPool.h"
+#include "Particle/ParticleSetPool.h"
 #include "QMCWaveFunctions/WaveFunctionComponent.h"
-#include "QMCWaveFunctions/TrialWaveFunction.h"
 #include "QMCWaveFunctions/PlaneWave/PWOrbitalBuilder.h"
 #include "QMCWaveFunctions/Fermion/SlaterDet.h"
 
@@ -34,11 +31,12 @@ namespace qmcplusplus
 TEST_CASE("PlaneWave SPO from HDF for BCC H", "[wavefunction]")
 {
   Communicate* c;
-  OHMMS::Controller->initialize(0, NULL);
   c = OHMMS::Controller;
 
-  ParticleSet ions;
-  ParticleSet elec;
+  auto ions_uptr = std::make_unique<ParticleSet>();
+  auto elec_uptr = std::make_unique<ParticleSet>();
+  ParticleSet& ions(*ions_uptr);
+  ParticleSet& elec(*elec_uptr);
 
   ions.setName("ion");
   ions.create(2);
@@ -83,21 +81,15 @@ TEST_CASE("PlaneWave SPO from HDF for BCC H", "[wavefunction]")
   tspecies(chargeIdx, upIdx)   = -1;
   tspecies(chargeIdx, downIdx) = -1;
 
-#ifdef ENABLE_SOA
-  elec.addTable(ions, DT_SOA);
-#else
-  elec.addTable(ions, DT_AOS);
-#endif
+  elec.addTable(ions);
   elec.resetGroups();
   elec.update();
 
-
-  TrialWaveFunction psi(c);
   // Need 1 electron and 1 proton, somehow
   //ParticleSet target = ParticleSet();
   ParticleSetPool ptcl = ParticleSetPool(c);
-  ptcl.addParticleSet(&elec);
-  ptcl.addParticleSet(&ions);
+  ptcl.addParticleSet(std::move(elec_uptr));
+  ptcl.addParticleSet(std::move(ions_uptr));
 
   //diamondC_1x1x1
   const char* particles = "<tmp> \
@@ -123,15 +115,12 @@ TEST_CASE("PlaneWave SPO from HDF for BCC H", "[wavefunction]")
   xmlNodePtr pw1 = xmlFirstElementChild(root);
 
 
-  PWOrbitalBuilder pw_builder(elec, psi, ptcl.getPool());
-  pw_builder.put(pw1);
-
-  REQUIRE(psi.getOrbitals().size() == 1);
-  WaveFunctionComponent* orb = psi.getOrbitals()[0];
+  PWOrbitalBuilder pw_builder(c, elec, ptcl.getPool());
+  WaveFunctionComponent* orb = pw_builder.buildComponent(pw1);
   SlaterDet* sd              = dynamic_cast<SlaterDet*>(orb);
   REQUIRE(sd != NULL);
   REQUIRE(sd->Dets.size() == 2);
-  SPOSetPtr spo = sd->mySPOSet.begin()->second;
+  SPOSetPtr spo = sd->getPhi(0);
   REQUIRE(spo != NULL);
   //SPOSet *spo = einSet.createSPOSetFromXML(ein1);
   //REQUIRE(spo != NULL);
@@ -139,7 +128,7 @@ TEST_CASE("PlaneWave SPO from HDF for BCC H", "[wavefunction]")
   int orbSize = spo->getOrbitalSetSize();
   elec.update();
   SPOSet::ValueVector_t orbs(orbSize);
-  spo->evaluate(elec, 0, orbs);
+  spo->evaluateValue(elec, 0, orbs);
 
   REQUIRE(std::real(orbs[0]) == Approx(-1.2473558998));
 
@@ -162,7 +151,7 @@ TEST_CASE("PlaneWave SPO from HDF for BCC H", "[wavefunction]")
         elec.R[0][2] = z;
         elec.update();
         SPOSet::ValueVector_t orbs(orbSize);
-        spo->evaluate(elec, 0, orbs);
+        spo->evaluateValue(elec, 0, orbs);
         fprintf(fspo, "%g %g %g",x,y,z);
         for (int j = 0; j < orbSize; j++) {
 #ifdef QMC_COMPLEX
@@ -183,11 +172,12 @@ TEST_CASE("PlaneWave SPO from HDF for BCC H", "[wavefunction]")
 TEST_CASE("PlaneWave SPO from HDF for LiH arb", "[wavefunction]")
 {
   Communicate* c;
-  OHMMS::Controller->initialize(0, NULL);
   c = OHMMS::Controller;
 
-  ParticleSet ions;
-  ParticleSet elec;
+  auto ions_uptr = std::make_unique<ParticleSet>();
+  auto elec_uptr = std::make_unique<ParticleSet>();
+  ParticleSet& ions(*ions_uptr);
+  ParticleSet& elec(*elec_uptr);
 
   ions.setName("ion");
   ions.create(2);
@@ -238,21 +228,15 @@ TEST_CASE("PlaneWave SPO from HDF for LiH arb", "[wavefunction]")
   tspecies(chargeIdx, upIdx)   = -1;
   tspecies(chargeIdx, downIdx) = -1;
 
-#ifdef ENABLE_SOA
-  elec.addTable(ions, DT_SOA);
-#else
-  elec.addTable(ions, DT_AOS);
-#endif
+  elec.addTable(ions);
   elec.resetGroups();
   elec.update();
 
-
-  TrialWaveFunction psi(c);
   // Need 1 electron and 1 proton, somehow
   //ParticleSet target = ParticleSet();
   ParticleSetPool ptcl = ParticleSetPool(c);
-  ptcl.addParticleSet(&elec);
-  ptcl.addParticleSet(&ions);
+  ptcl.addParticleSet(std::move(elec_uptr));
+  ptcl.addParticleSet(std::move(ions_uptr));
 
   //diamondC_1x1x1
   const char* particles = "<tmp> \
@@ -278,15 +262,12 @@ TEST_CASE("PlaneWave SPO from HDF for LiH arb", "[wavefunction]")
   xmlNodePtr pw1 = xmlFirstElementChild(root);
 
 
-  PWOrbitalBuilder pw_builder(elec, psi, ptcl.getPool());
-  pw_builder.put(pw1);
-
-  REQUIRE(psi.getOrbitals().size() == 1);
-  WaveFunctionComponent* orb = psi.getOrbitals()[0];
+  PWOrbitalBuilder pw_builder(c, elec, ptcl.getPool());
+  WaveFunctionComponent* orb = pw_builder.buildComponent(pw1);
   SlaterDet* sd              = dynamic_cast<SlaterDet*>(orb);
   REQUIRE(sd != NULL);
   REQUIRE(sd->Dets.size() == 2);
-  SPOSetPtr spo = sd->mySPOSet.begin()->second;
+  SPOSetPtr spo = sd->getPhi(0);
   REQUIRE(spo != NULL);
   //SPOSet *spo = einSet.createSPOSetFromXML(ein1);
   //REQUIRE(spo != NULL);
@@ -294,7 +275,7 @@ TEST_CASE("PlaneWave SPO from HDF for LiH arb", "[wavefunction]")
   int orbSize = spo->getOrbitalSetSize();
   elec.update();
   SPOSet::ValueVector_t orbs(orbSize);
-  spo->evaluate(elec, 0, orbs);
+  spo->evaluateValue(elec, 0, orbs);
 
   REQUIRE(std::real(orbs[0]) == Approx(-14.3744302974));
 
@@ -317,7 +298,7 @@ TEST_CASE("PlaneWave SPO from HDF for LiH arb", "[wavefunction]")
         elec.R[0][2] = z;
         elec.update();
         SPOSet::ValueVector_t orbs(orbSize);
-        spo->evaluate(elec, 0, orbs);
+        spo->evaluateValue(elec, 0, orbs);
         fprintf(fspo, "%g %g %g",x,y,z);
         for (int j = 0; j < orbSize; j++) {
 #ifdef QMC_COMPLEX

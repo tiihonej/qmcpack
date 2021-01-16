@@ -16,15 +16,16 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCDrivers/VMC/VMC.h"
+#include "VMC.h"
 #include "QMCDrivers/VMC/VMCUpdatePbyP.h"
 #include "QMCDrivers/VMC/VMCUpdatePbyPGuide.h"
 #include "QMCDrivers/VMC/VMCUpdateAll.h"
+#include "QMCDrivers/VMC/SOVMCUpdatePbyP.h"
 #include "OhmmsApp/RandomNumberControl.h"
 #include "Message/OpenMP.h"
 #include "Message/CommOperators.h"
 #include "Utilities/RunTimeManager.h"
-#include <qmc_common.h>
+#include "Utilities/qmc_common.h"
 //#define ENABLE_VMC_OMP_MASTER
 #include "Utilities/FairDivide.h"
 #if !defined(REMOVE_TRACEMANAGER)
@@ -36,15 +37,10 @@ typedef int TraceManager;
 namespace qmcplusplus
 {
 /// Constructor.
-VMC::VMC(MCWalkerConfiguration& w,
-         TrialWaveFunction& psi,
-         QMCHamiltonian& h,
-         WaveFunctionPool& ppool,
-         Communicate* comm)
-    : QMCDriver(w, psi, h, ppool, comm), UseDrift("yes")
+VMC::VMC(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, Communicate* comm, bool enable_profiling)
+    : QMCDriver(w, psi, h, comm, "VMC", enable_profiling), UseDrift("yes")
 {
   RootName = "vmc";
-  QMCType  = "VMC";
   qmc_driver_mode.set(QMC_UPDATE_MODE, 1);
   qmc_driver_mode.set(QMC_WARMUP, 0);
   m_param.add(UseDrift, "useDrift", "string");
@@ -66,8 +62,8 @@ bool VMC::run()
   Traces->startRun(nBlocks, traceClones);
 #endif
 
-  LoopTimer vmc_loop;
-  RunTimeControl runtimeControl(RunTimeManager, MaxCPUSecs);
+  LoopTimer<> vmc_loop;
+  RunTimeControl<> runtimeControl(run_time_manager, MaxCPUSecs);
   bool enough_time_for_next_iteration = true;
 
   const bool has_collectables = W.Collectables.size();
@@ -176,9 +172,10 @@ void VMC::resetRun()
       Rng[ip] = new FakeRandom();
 #else
       Rng[ip] = new RandomGenerator_t(*(RandomNumberControl::Children[ip]));
-      hClones[ip]->setRandomGenerator(Rng[ip]);
 #endif
-      if (qmc_driver_mode[QMC_UPDATE_MODE])
+      hClones[ip]->setRandomGenerator(Rng[ip]);
+
+      if (SpinMoves == "yes")
       {
         if(UseGuide == "yes") {
           Movers[ip] = new VMCUpdatePbyPGuide(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]); 
@@ -186,10 +183,25 @@ void VMC::resetRun()
         else {
           Movers[ip] = new VMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
           }
+        if (qmc_driver_mode[QMC_UPDATE_MODE])
+        {
+          Movers[ip] = new SOVMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
+        }
+        else
+        {
+          APP_ABORT("Spin moves only implemented with PbyP moves\n");
+        }
       }
       else
       {
-        Movers[ip] = new VMCUpdateAll(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
+        if (qmc_driver_mode[QMC_UPDATE_MODE])
+        {
+          Movers[ip] = new VMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
+        }
+        else
+        {
+          Movers[ip] = new VMCUpdateAll(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
+        }
       }
       Movers[ip]->nSubSteps = nSubSteps;
       if (ip == 0)
@@ -227,6 +239,14 @@ void VMC::resetRun()
     for (int i = 0; i < Movers.size(); i++)
       Movers[i]->UseDrift = false;
   }
+
+  if (SpinMoves == "yes")
+  {
+    app_log() << "  Spins treated as dynamic variable with SpinMass: " << SpinMass << std::endl;
+    for (int i = 0; i < Movers.size(); i++)
+      Movers[i]->setSpinMass(SpinMass);
+  }
+
   app_log() << "  Total Sample Size   =" << nTargetSamples << std::endl;
   app_log() << "  Walker distribution on root = ";
   copy(wPerNode.begin(), wPerNode.end(), std::ostream_iterator<int>(app_log(), " "));
@@ -240,7 +260,7 @@ void VMC::resetRun()
   {
     //int ip=omp_get_thread_num();
     Movers[ip]->put(qmcNode);
-    Movers[ip]->resetRun(branchEngine, estimatorClones[ip], traceClones[ip], DriftModifier);
+    Movers[ip]->resetRun(branchEngine.get(), estimatorClones[ip], traceClones[ip], DriftModifier);
     if (qmc_driver_mode[QMC_UPDATE_MODE])
       Movers[ip]->initWalkersForPbyP(W.begin() + wPerNode[ip], W.begin() + wPerNode[ip + 1]);
     else
@@ -319,6 +339,8 @@ bool VMC::put(xmlNodePtr q)
 
   app_log() << "\n<vmc function=\"put\">"
             << "\n  qmc_counter=" << qmc_common.qmc_counter << "  my_counter=" << MyCounter << std::endl;
+
+
   if (qmc_common.qmc_counter && MyCounter)
   {
     nSteps               = prevSteps;
@@ -330,6 +352,8 @@ bool VMC::put(xmlNodePtr q)
     //compute samples and overwrite steps for the given samples
     int Nthreads = omp_get_max_threads();
     int Nprocs   = myComm->size();
+
+
     //target samples set by samples or samplesperthread/dmcwalkersperthread
     nTargetPopulation = std::max(nTargetPopulation, nSamplesPerThread * Nprocs * Nthreads);
     nTargetSamples    = static_cast<int>(std::ceil(nTargetPopulation));
@@ -368,6 +392,7 @@ bool VMC::put(xmlNodePtr q)
   app_log() << "  target samples = " << nTargetPopulation << std::endl;
   app_log() << "  walkers/mpi    = " << W.getActiveWalkers() << std::endl << std::endl;
   app_log() << "  stepsbetweensamples = " << nStepsBetweenSamples << std::endl;
+  app_log() << "  SpinMoves      = " << SpinMoves << std::endl;
 
   m_param.get(app_log());
 

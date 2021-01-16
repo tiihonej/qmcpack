@@ -12,11 +12,14 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCHamiltonians/LocalECPotential_CUDA.h"
+#include "LocalECPotential_CUDA.h"
 #include "Particle/MCWalkerConfiguration.h"
+#include "QMCDrivers/WalkerProperties.h"
 
 namespace qmcplusplus
 {
+using WP = WalkerProperties::Indexes;
+
 LocalECPotential_CUDA::LocalECPotential_CUDA(ParticleSet& ions, ParticleSet& elns)
     : LocalECPotential(ions, elns),
       ElecRef(elns),
@@ -52,11 +55,11 @@ LocalECPotential_CUDA::LocalECPotential_CUDA(ParticleSet& ions, ParticleSet& eln
 #endif
 }
 
-void LocalECPotential_CUDA::add(int groupID, RadialPotentialType* ppot, RealType z)
+void LocalECPotential_CUDA::add(int groupID, std::unique_ptr<RadialPotentialType>&& ppot, RealType z)
 {
-  RadialPotentialType* savefunc = PPset[groupID];
-  LocalECPotential::add(groupID, ppot, z);
-  RadialPotentialType* rfunc = PPset[groupID];
+  RadialPotentialType* savefunc = PPset[groupID].get();
+  LocalECPotential::add(groupID, std::move(ppot), z);
+  RadialPotentialType* rfunc = PPset[groupID].get();
   if (rfunc != savefunc)
   {
     // Setup CUDA spline
@@ -114,7 +117,7 @@ void LocalECPotential_CUDA::addEnergy(MCWalkerConfiguration& W, std::vector<Real
   for (int iw = 0; iw < walkers.size(); iw++)
   {
     // fprintf (stderr, "Energy = %18.6f\n", SumHost[iw]);
-    walkers[iw]->getPropertyBase()[NUMPROPERTIES + myIndex] = esum[iw];
+    walkers[iw]->getPropertyBase()[WP::NUMPROPERTIES + myIndex] = esum[iw];
     LocalEnergy[iw] += esum[iw];
   }
 }
@@ -124,13 +127,8 @@ OperatorBase* LocalECPotential_CUDA::makeClone(ParticleSet& qp, TrialWaveFunctio
 {
   LocalECPotential_CUDA* myclone = new LocalECPotential_CUDA(IonRef, qp);
   for (int ig = 0; ig < PPset.size(); ++ig)
-  {
     if (PPset[ig])
-    {
-      RadialPotentialType* ppot = PPset[ig]->makeClone();
-      myclone->add(ig, ppot, gZeff[ig]);
-    }
-  }
+      myclone->add(ig, std::unique_ptr<RadialPotentialType>(PPset[ig]->makeClone()), gZeff[ig]);
   return myclone;
 }
 

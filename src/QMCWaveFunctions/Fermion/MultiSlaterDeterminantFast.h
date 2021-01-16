@@ -16,11 +16,9 @@
 #ifndef QMCPLUSPLUS_MULTISLATERDETERMINANTFAST_ORBITAL_H
 #define QMCPLUSPLUS_MULTISLATERDETERMINANTFAST_ORBITAL_H
 #include <Configuration.h>
-#include <QMCWaveFunctions/WaveFunctionComponent.h>
-#include <QMCWaveFunctions/Fermion/MultiDiracDeterminant.h>
-#include <QMCWaveFunctions/Fermion/MultiSlaterDeterminant.h>
-#include <QMCWaveFunctions/Fermion/SPOSetProxyForMSD.h>
-#include "Utilities/NewTimer.h"
+#include "QMCWaveFunctions/WaveFunctionComponent.h"
+#include "QMCWaveFunctions/Fermion/MultiDiracDeterminant.h"
+#include "Utilities/TimerManager.h"
 #include "QMCWaveFunctions/Fermion/BackflowTransformation.h"
 
 namespace qmcplusplus
@@ -57,7 +55,6 @@ public:
   NewTimer &Ratio1Timer, &Ratio1GradTimer, &Ratio1AllTimer, &AccRejTimer;
 
   typedef SPOSet* SPOSetPtr;
-  typedef SPOSetProxyForMSD* SPOSetProxyPtr;
   typedef OrbitalSetTraits<ValueType>::IndexVector_t IndexVector_t;
   typedef OrbitalSetTraits<ValueType>::ValueVector_t ValueVector_t;
   typedef OrbitalSetTraits<ValueType>::GradVector_t GradVector_t;
@@ -81,8 +78,6 @@ public:
   void resetParameters(const opt_variables_type& active) override;
   void reportStatus(std::ostream& os) override;
 
-  void resetTargetParticleSet(ParticleSet& P) override;
-
   //builds orbital rotation parameters using MultiSlater member variables
   void buildOptVariables();
 
@@ -95,22 +90,22 @@ public:
     Dets[1]->setBF(bf);
   }
 
-  ValueType evaluate_vgl_impl(ParticleSet& P,
-                              ParticleSet::ParticleGradient_t& g_tmp,
-                              ParticleSet::ParticleLaplacian_t& l_tmp);
+  PsiValueType evaluate_vgl_impl(ParticleSet& P,
+                                 ParticleSet::ParticleGradient_t& g_tmp,
+                                 ParticleSet::ParticleLaplacian_t& l_tmp);
 
-  ValueType evaluate(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
+  PsiValueType evaluate(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
 
-  RealType evaluateLog(ParticleSet& P,
-                       ParticleSet::ParticleGradient_t& G,
-                       ParticleSet::ParticleLaplacian_t& L) override;
+  LogValueType evaluateLog(ParticleSet& P,
+                           ParticleSet::ParticleGradient_t& G,
+                           ParticleSet::ParticleLaplacian_t& L) override;
 
   GradType evalGrad(ParticleSet& P, int iat) override;
-  ValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
-  ValueType evalGrad_impl(ParticleSet& P, int iat, bool newpos, GradType& g_at);
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
+  PsiValueType evalGrad_impl(ParticleSet& P, int iat, bool newpos, GradType& g_at);
 
-  ValueType ratio(ParticleSet& P, int iat) override;
-  ValueType ratio_impl(ParticleSet& P, int iat);
+  PsiValueType ratio(ParticleSet& P, int iat) override;
+  PsiValueType ratio_impl(ParticleSet& P, int iat);
   void evaluateRatiosAlltoOne(ParticleSet& P, std::vector<ValueType>& ratios) override
   {
     // the base class routine may probably work, just never tested.
@@ -118,11 +113,11 @@ public:
     APP_ABORT(" Need to implement MultiSlaterDeterminantFast::evaluateRatiosAlltoOne. \n");
   }
 
-  void acceptMove(ParticleSet& P, int iat) override;
+  void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false) override;
   void restore(int iat) override;
 
   void registerData(ParticleSet& P, WFBufferType& buf) override;
-  RealType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) override;
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf) override;
 
   WaveFunctionComponentPtr makeClone(ParticleSet& tqp) const override;
@@ -149,8 +144,8 @@ public:
   size_t ActiveSpin;
   bool usingCSF;
   bool IsCloned;
-  ValueType curRatio;
-  ValueType psiCurrent;
+  PsiValueType curRatio;
+  PsiValueType psiCurrent;
 
   // assume Dets[0]: up, Dets[1]:down
   std::vector<MultiDiracDeterminant*> Dets;
@@ -184,9 +179,6 @@ public:
   Matrix<RealType> dpsia_up, dLa_up;
   Matrix<RealType> dpsia_dn, dLa_dn;
   Array<GradType, OHMMS_DIM> dGa_up, dGa_dn;
-
-  // debug, erase later
-  //      MultiSlaterDeterminant *msd;
 };
 
 } // namespace qmcplusplus

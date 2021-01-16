@@ -14,9 +14,9 @@
 #include "Configuration.h"
 #include "QMCWaveFunctions/WaveFunctionComponent.h"
 #include "QMCWaveFunctions/Jastrow/DiffOneBodyJastrowOrbital.h"
-#include <qmc_common.h>
-#include <simd/allocator.hpp>
-#include <simd/algorithm.hpp>
+#include "Utilities/qmc_common.h"
+#include "CPU/SIMD/aligned_allocator.hpp"
+#include "CPU/SIMD/algorithm.hpp"
 #include <map>
 #include <numeric>
 
@@ -35,7 +35,8 @@ struct J1OrbitalSoA : public WaveFunctionComponent
   ///element position type
   using posT = TinyVector<valT, OHMMS_DIM>;
   ///use the same container
-  using RowContainer = DistanceTableData::RowContainer;
+  using DistRow  = DistanceTableData::DistRow;
+  using DisplRow = DistanceTableData::DisplRow;
   ///table index
   const int myTableID;
   ///number of ions
@@ -61,11 +62,12 @@ struct J1OrbitalSoA : public WaveFunctionComponent
   ///Container for \f$F[ig*NumGroups+jg]\f$
   std::vector<FT*> F;
 
-  J1OrbitalSoA(const ParticleSet& ions, ParticleSet& els)
-    : Ions(ions), myTableID(els.addTable(ions, DT_SOA))
+  J1OrbitalSoA(const std::string& obj_name, const ParticleSet& ions, ParticleSet& els)
+      : WaveFunctionComponent("J1OrbitalSoA", obj_name), myTableID(els.addTable(ions)), Ions(ions)
   {
+    if (myName.empty())
+      throw std::runtime_error("J1OrbitalSoA object name cannot be empty!");
     initialize(els);
-    ClassName = "J1OrbitalSoA";
   }
 
   J1OrbitalSoA(const J1OrbitalSoA& rhs) = delete;
@@ -112,16 +114,15 @@ struct J1OrbitalSoA : public WaveFunctionComponent
     const DistanceTableData& d_ie(P.getDistTable(myTableID));
     for (int iat = 0; iat < Nelec; ++iat)
     {
-      computeU3(P, iat, d_ie.Distances[iat]);
+      computeU3(P, iat, d_ie.getDistRow(iat));
       Vat[iat] = simd::accumulate_n(U.data(), Nions, valT());
-      Lap[iat] = accumulateGL(dU.data(), d2U.data(), d_ie.Displacements[iat], Grad[iat]);
+      Lap[iat] = accumulateGL(dU.data(), d2U.data(), d_ie.getDisplRow(iat), Grad[iat]);
     }
   }
 
-  RealType evaluateLog(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
+  LogValueType evaluateLog(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
   {
-    evaluateGL(P, G, L, true);
-    return LogValue;
+    return evaluateGL(P, G, L, true);
   }
 
   void evaluateHessian(ParticleSet& P, HessVector_t& grad_grad_psi)
@@ -135,38 +136,38 @@ struct J1OrbitalSoA : public WaveFunctionComponent
 
     for (int iel = 0; iel < Nelec; ++iel)
     {
-      const valT* dist          = d_ie.Distances[iel];
-      const RowContainer& displ = d_ie.Displacements[iel];
+      const auto& dist  = d_ie.getDistRow(iel);
+      const auto& displ = d_ie.getDisplRow(iel);
       for (int iat = 0; iat < Nions; iat++)
       {
         int gid    = Ions.GroupID[iat];
         auto* func = F[gid];
-        if( func != nullptr)
+        if (func != nullptr)
         {
-           RealType r    = dist[iat];
-           RealType rinv = 1.0 / r;
-           PosType dr    = displ[iat];
-           func->evaluate(r, dudr, d2udr2);
-           grad_grad_psi[iel] -= rinv * rinv * outerProduct(dr, dr) * (d2udr2 - dudr * rinv) + ident * dudr * rinv;
+          RealType r    = dist[iat];
+          RealType rinv = 1.0 / r;
+          PosType dr    = displ[iat];
+          func->evaluate(r, dudr, d2udr2);
+          grad_grad_psi[iel] -= rinv * rinv * outerProduct(dr, dr) * (d2udr2 - dudr * rinv) + ident * dudr * rinv;
         }
       }
     }
   }
 
-  ValueType ratio(ParticleSet& P, int iat)
+  PsiValueType ratio(ParticleSet& P, int iat)
   {
     UpdateMode = ORB_PBYP_RATIO;
-    curAt      = computeU(P.getDistTable(myTableID).Temp_r.data());
-    return std::exp(Vat[iat] - curAt);
+    curAt      = computeU(P.getDistTable(myTableID).getTempDists());
+    return std::exp(static_cast<PsiValueType>(Vat[iat] - curAt));
   }
 
-  inline void evaluateRatios(VirtualParticleSet& VP, std::vector<ValueType>& ratios)
+  inline void evaluateRatios(const VirtualParticleSet& VP, std::vector<ValueType>& ratios)
   {
     for (int k = 0; k < ratios.size(); ++k)
-      ratios[k] = std::exp(Vat[VP.refPtcl] - computeU(VP.getDistTable(myTableID).Distances[k]));
+      ratios[k] = std::exp(Vat[VP.refPtcl] - computeU(VP.getDistTable(myTableID).getDistRow(k)));
   }
 
-  inline valT computeU(const valT* dist)
+  inline valT computeU(const DistRow& dist)
   {
     valT curVat(0);
     if (NumGroups > 0)
@@ -174,7 +175,7 @@ struct J1OrbitalSoA : public WaveFunctionComponent
       for (int jg = 0; jg < NumGroups; ++jg)
       {
         if (F[jg] != nullptr)
-          curVat += F[jg]->evaluateV(-1, Ions.first(jg), Ions.last(jg), dist, DistCompressed.data());
+          curVat += F[jg]->evaluateV(-1, Ions.first(jg), Ions.last(jg), dist.data(), DistCompressed.data());
       }
     }
     else
@@ -191,14 +192,14 @@ struct J1OrbitalSoA : public WaveFunctionComponent
 
   void evaluateRatiosAlltoOne(ParticleSet& P, std::vector<ValueType>& ratios)
   {
-    const valT* restrict dist = P.getDistTable(myTableID).Temp_r.data();
-    curAt                     = valT(0);
+    const auto& dist = P.getDistTable(myTableID).getTempDists();
+    curAt            = valT(0);
     if (NumGroups > 0)
     {
       for (int jg = 0; jg < NumGroups; ++jg)
       {
         if (F[jg] != nullptr)
-          curAt += F[jg]->evaluateV(-1, Ions.first(jg), Ions.last(jg), dist, DistCompressed.data());
+          curAt += F[jg]->evaluateV(-1, Ions.first(jg), Ions.last(jg), dist.data(), DistCompressed.data());
       }
     }
     else
@@ -215,10 +216,10 @@ struct J1OrbitalSoA : public WaveFunctionComponent
       ratios[i] = std::exp(Vat[i] - curAt);
   }
 
-  inline void evaluateGL(ParticleSet& P,
-                         ParticleSet::ParticleGradient_t& G,
-                         ParticleSet::ParticleLaplacian_t& L,
-                         bool fromscratch = false)
+  inline LogValueType evaluateGL(ParticleSet& P,
+                                 ParticleSet::ParticleGradient_t& G,
+                                 ParticleSet::ParticleLaplacian_t& L,
+                                 bool fromscratch = false)
   {
     if (fromscratch)
       recompute(P);
@@ -227,16 +228,13 @@ struct J1OrbitalSoA : public WaveFunctionComponent
       G[iat] += Grad[iat];
     for (size_t iat = 0; iat < Nelec; ++iat)
       L[iat] -= Lap[iat];
-    LogValue = -simd::accumulate_n(Vat.data(), Nelec, valT());
+    return LogValue = -simd::accumulate_n(Vat.data(), Nelec, valT());
   }
 
   /** compute gradient and lap
    * @return lap
    */
-  inline valT accumulateGL(const valT* restrict du,
-                           const valT* restrict d2u,
-                           const RowContainer& displ,
-                           posT& grad) const
+  inline valT accumulateGL(const valT* restrict du, const valT* restrict d2u, const DisplRow& displ, posT& grad) const
   {
     valT lap(0);
     constexpr valT lapfac = OHMMS_DIM - RealType(1);
@@ -260,7 +258,7 @@ struct J1OrbitalSoA : public WaveFunctionComponent
    * @param iat the moving particle
    * @param dist starting address of the distances of the ions wrt the iat-th particle
    */
-  inline void computeU3(ParticleSet& P, int iat, const valT* dist)
+  inline void computeU3(ParticleSet& P, int iat, const DistRow& dist)
   {
     if (NumGroups > 0)
     { //ions are grouped
@@ -273,15 +271,8 @@ struct J1OrbitalSoA : public WaveFunctionComponent
       {
         if (F[jg] == nullptr)
           continue;
-        F[jg]->evaluateVGL(-1,
-                           Ions.first(jg),
-                           Ions.last(jg),
-                           dist,
-                           U.data(),
-                           dU.data(),
-                           d2U.data(),
-                           DistCompressed.data(),
-                           DistIndice.data());
+        F[jg]->evaluateVGL(-1, Ions.first(jg), Ions.last(jg), dist.data(), U.data(), dU.data(), d2U.data(),
+                           DistCompressed.data(), DistIndice.data());
       }
     }
     else
@@ -308,29 +299,29 @@ struct J1OrbitalSoA : public WaveFunctionComponent
    * @param P quantum particleset
    * @param iat particle index
    *
-   * Using Temp_r. curAt, curGrad and curLap are computed.
+   * Using getTempDists(). curAt, curGrad and curLap are computed.
    */
-  ValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
+  PsiValueType ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
   {
     UpdateMode = ORB_PBYP_PARTIAL;
 
-    computeU3(P, iat, P.getDistTable(myTableID).Temp_r.data());
-    curLap = accumulateGL(dU.data(), d2U.data(), P.getDistTable(myTableID).Temp_dr, curGrad);
+    computeU3(P, iat, P.getDistTable(myTableID).getTempDists());
+    curLap = accumulateGL(dU.data(), d2U.data(), P.getDistTable(myTableID).getTempDispls(), curGrad);
     curAt  = simd::accumulate_n(U.data(), Nions, valT());
     grad_iat += curGrad;
-    return std::exp(Vat[iat] - curAt);
+    return std::exp(static_cast<PsiValueType>(Vat[iat] - curAt));
   }
 
   /** Rejected move. Nothing to do */
   inline void restore(int iat) {}
 
   /** Accpted move. Update Vat[iat],Grad[iat] and Lap[iat] */
-  void acceptMove(ParticleSet& P, int iat)
+  void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false)
   {
     if (UpdateMode == ORB_PBYP_RATIO)
     {
-      computeU3(P, iat, P.getDistTable(myTableID).Temp_r.data());
-      curLap = accumulateGL(dU.data(), d2U.data(), P.getDistTable(myTableID).Temp_dr, curGrad);
+      computeU3(P, iat, P.getDistTable(myTableID).getTempDists());
+      curLap = accumulateGL(dU.data(), d2U.data(), P.getDistTable(myTableID).getTempDispls(), curGrad);
     }
 
     LogValue += Vat[iat] - curAt;
@@ -360,7 +351,7 @@ struct J1OrbitalSoA : public WaveFunctionComponent
     }
   }
 
-  inline RealType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false)
+  inline LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false)
   {
     evaluateGL(P, P.G, P.L, false);
     buf.forward(Bytes_in_WFBuffer);
@@ -376,7 +367,7 @@ struct J1OrbitalSoA : public WaveFunctionComponent
 
   WaveFunctionComponentPtr makeClone(ParticleSet& tqp) const
   {
-    J1OrbitalSoA<FT>* j1copy = new J1OrbitalSoA<FT>(Ions, tqp);
+    J1OrbitalSoA<FT>* j1copy = new J1OrbitalSoA<FT>(myName, Ions, tqp);
     j1copy->Optimizable      = Optimizable;
     for (size_t i = 0, n = F.size(); i < n; ++i)
     {
@@ -391,7 +382,6 @@ struct J1OrbitalSoA : public WaveFunctionComponent
   }
 
   /**@{ WaveFunctionComponent virtual functions that are not essential for the development */
-  void resetTargetParticleSet(ParticleSet& P) {}
   void reportStatus(std::ostream& os)
   {
     for (size_t i = 0, n = F.size(); i < n; ++i)
@@ -449,12 +439,12 @@ struct J1OrbitalSoA : public WaveFunctionComponent
     const DistanceTableData& d_ie(P.getDistTable(myTableID));
     for (int iat = 0; iat < Nelec; ++iat)
     {
-      const valT* dist          = d_ie.Distances[iat];
-      const RowContainer& displ = d_ie.Displacements[iat];
-      int gid                   = Ions.GroupID[isrc];
-      RealType r                = dist[isrc];
-      RealType rinv             = 1.0 / r;
-      PosType dr                = displ[isrc];
+      const auto& dist  = d_ie.getDistRow(iat);
+      const auto& displ = d_ie.getDisplRow(iat);
+      int gid           = source.GroupID[isrc];
+      RealType r        = dist[isrc];
+      RealType rinv     = 1.0 / r;
+      PosType dr        = displ[isrc];
 
       if (F[gid] != nullptr)
       {
@@ -475,12 +465,12 @@ struct J1OrbitalSoA : public WaveFunctionComponent
     const DistanceTableData& d_ie(P.getDistTable(myTableID));
     for (int iat = 0; iat < Nelec; ++iat)
     {
-      const valT* dist          = d_ie.Distances[iat];
-      const RowContainer& displ = d_ie.Displacements[iat];
-      int gid                   = Ions.GroupID[isrc];
-      RealType r                = dist[isrc];
-      RealType rinv             = 1.0 / r;
-      PosType dr                = displ[isrc];
+      const auto& dist  = d_ie.getDistRow(iat);
+      const auto& displ = d_ie.getDisplRow(iat);
+      int gid           = source.GroupID[isrc];
+      RealType r        = dist[isrc];
+      RealType rinv     = 1.0 / r;
+      PosType dr        = displ[isrc];
 
       if (F[gid] != nullptr)
       {
@@ -501,7 +491,7 @@ struct J1OrbitalSoA : public WaveFunctionComponent
 
       for (int idim = 0; idim < OHMMS_DIM; idim++)
       {
-        grad_grad[idim][iat]       += dr[idim] * dr * rinv * rinv * grad_component;
+        grad_grad[idim][iat] += dr[idim] * dr * rinv * rinv * grad_component;
         grad_grad[idim][iat][idim] += rinv * dU[isrc];
 
         lapl_grad[idim][iat] -= lapl_component * rinv * dr[idim];

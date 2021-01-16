@@ -11,15 +11,15 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include <QMCHamiltonians/OrbitalImages.h>
-#include <OhmmsData/AttributeSet.h>
-#include <QMCWaveFunctions/SPOSetBuilderFactory.h>
-#include <Utilities/unit_conversion.h>
+#include "OrbitalImages.h"
+#include "OhmmsData/AttributeSet.h"
+#include "QMCWaveFunctions/WaveFunctionFactory.h"
+#include "Utilities/unit_conversion.h"
 
 
 namespace qmcplusplus
 {
-OrbitalImages::OrbitalImages(ParticleSet& P, PSPool& PSP, Communicate* mpicomm) : psetpool(PSP)
+OrbitalImages::OrbitalImages(ParticleSet& P, PSPool& PSP, Communicate* mpicomm, const WaveFunctionFactory& factory) : psetpool(PSP), wf_factory_(factory)
 {
   //keep the electron particle to get the cell later, if necessary
   Peln = &P;
@@ -147,20 +147,18 @@ bool OrbitalImages::put(xmlNodePtr cur)
   for (int i = 0; i < valtypes.size(); ++i)
   {
     const std::string& valtype = valtypes[i];
-    value_types_enum value_type;
     if (valtype == "real")
-      value_type = real_val;
+      value_types.push_back(real_val);
     else if (valtype == "imag")
-      value_type = imag_val;
+      value_types.push_back(imag_val);
     else if (valtype == "abs")
-      value_type = abs_val;
+      value_types.push_back(abs_val);
     else if (valtype == "abs2")
-      value_type = abs2_val;
+      value_types.push_back(abs2_val);
     else
     {
       APP_ABORT("OrbitalImages::put  value type " + valtype + " is unsupported\n  valid options are: value, abs, abs2");
     }
-    value_types.push_back(value_type);
   }
   if (value_types.size() == 0)
     value_types.push_back(real_val);
@@ -187,7 +185,7 @@ bool OrbitalImages::put(xmlNodePtr cur)
     APP_ABORT("OrbitalImages::put  must have at least one sposet");
   for (int i = 0; i < sposet_names.size(); ++i)
   {
-    SPOSet* sposet = get_sposet(sposet_names[i]);
+    SPOSet* sposet = wf_factory_.getSPOSet(sposet_names[i]);
     if (sposet == 0)
       APP_ABORT("OrbitalImages::put  sposet " + sposet_names[i] + " does not exist");
     sposets.push_back(sposet);
@@ -347,13 +345,13 @@ OrbitalImages::Return_t OrbitalImages::evaluate(ParticleSet& P)
           P.makeMove(0, rpoints[p] - P.R[0]);
           if (!derivatives)
           {
-            sposet.evaluate(P, 0, spo_vtmp); //note that ALL orbitals are evaluated each time
+            sposet.evaluateValue(P, 0, spo_vtmp); //note that ALL orbitals are evaluated each time
             for (int b = bstart, ib = 0; b < bend; ++b, ++ib)
               batch_values(p, ib) = spo_vtmp[sposet_inds[b]];
           }
           else
           {
-            sposet.evaluate(P, 0, spo_vtmp, spo_gtmp, spo_ltmp);
+            sposet.evaluateVGL(P, 0, spo_vtmp, spo_gtmp, spo_ltmp);
             for (int b = bstart, ib = 0; b < bend; ++b, ++ib)
               batch_values(p, ib) = spo_vtmp[sposet_inds[b]];
             for (int b = bstart, ib = 0; b < bend; ++b, ++ib)

@@ -14,7 +14,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-/** @file common.cpp
+/** @file
  *
  * Instantiates the static data
  * Implements member functions of EinsplineSetBuilder
@@ -35,27 +35,29 @@ namespace qmcplusplus
 ////std::map<H5OrbSet,multi_UBspline_3d_d*,H5OrbSet> EinsplineSetBuilder::ExtendedMap_d;
 
 EinsplineSetBuilder::EinsplineSetBuilder(ParticleSet& p, PtclPoolType& psets, Communicate* comm, xmlNodePtr cur)
-    : SPOSetBuilder(comm),
-      TargetPtcl(p),
+    : SPOSetBuilder("spline", comm),
       ParticleSets(psets),
+      TargetPtcl(p),
       MixedSplineReader(0),
       XMLRoot(cur),
+      H5FileID(-1),
       Format(QMCPACK),
-      TileFactor(1, 1, 1),
-      TwistNum(0),
-      LastSpinSet(-1),
-      NumOrbitalsRead(-1),
-      NumMuffinTins(0),
-      NumCoreStates(0),
       NumBands(0),
       NumElectrons(0),
       NumSpins(0),
       NumTwists(0),
-      H5FileID(-1),
-      makeRotations(false),
+      NumCoreStates(0),
       MeshFactor(1.0),
-      MeshSize(0, 0, 0)
+      MeshSize(0, 0, 0),
+      TwistNum(0),
+      TileFactor(1, 1, 1),
+      NumMuffinTins(0),
+      LastSpinSet(-1),
+      NumOrbitalsRead(-1),
+      makeRotations(false)
 {
+  ClassName = "EinsplineSetBuilder";
+
   MatchingTol = 10 * std::numeric_limits<float>::epsilon();
   for (int i = 0; i < 3; i++)
     for (int j = 0; j < 3; j++)
@@ -437,7 +439,6 @@ void EinsplineSetBuilder::AnalyzeTwists2()
     if (dot(ks - kp, ks - kp) > 1.0e-6)
     {
       app_error() << "Primitive and super k-points do not agree.  Error in coding.\n";
-      app_error().flush();
       APP_ABORT("EinsplineSetBuilder::AnalyzeTwists2");
     }
     PosType frac = FracPart(superTwist);
@@ -531,7 +532,6 @@ void EinsplineSetBuilder::AnalyzeTwists2()
     {
       app_error() << "Cannot use this super twist with real wavefunctions.\n"
                   << "Please recompile with QMC_COMPLEX=1.\n";
-      app_error().flush();
       APP_ABORT("EinsplineSetBuilder::AnalyzeTwists2");
     }
   }
@@ -787,12 +787,12 @@ EinsplineSetBuilder::AnalyzeTwists()
 */
 
 
-void EinsplineSetBuilder::OccupyBands(int spin, int sortBands, int numOrbs)
+void EinsplineSetBuilder::OccupyBands(int spin, int sortBands, int numOrbs, bool skipChecks)
 {
   update_token(__FILE__, __LINE__, "OccupyBands");
   if (myComm->rank() != 0)
     return;
-  if (spin >= NumSpins)
+  if (spin >= NumSpins && !skipChecks)
   {
     app_error() << "To developer: User is requesting for orbitals in an invalid spin group " << spin
                 << ". Current h5 file only contains spin groups "

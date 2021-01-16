@@ -18,13 +18,11 @@
 #include "Utilities/RandomGenerator.h"
 #include "OhmmsData/Libxml2Doc.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
-#include "Lattice/ParticleBConds.h"
 #include "Particle/ParticleSet.h"
-#include "Particle/DistanceTableData.h"
 #include "Particle/MCWalkerConfiguration.h"
 #include "QMCDrivers/CloneManager.h"
 #include "QMCDrivers/QMCUpdateBase.h"
-#include "QMCApp/HamiltonianPool.h"
+#include "QMCHamiltonians/HamiltonianPool.h"
 
 
 #include <stdio.h>
@@ -48,7 +46,6 @@ public:
 
 TEST_CASE("QMCUpdate", "[drivers]")
 {
-  OHMMS::Controller->initialize(0, NULL);
   Communicate* c = OHMMS::Controller;
 
   MCWalkerConfiguration elec;
@@ -56,10 +53,17 @@ TEST_CASE("QMCUpdate", "[drivers]")
   elec.create(1);
   elec.createWalkers(1);
 
+  SpeciesSet& tspecies         = elec.getSpeciesSet();
+  int upIdx                    = tspecies.addSpecies("u");
+  int chargeIdx                = tspecies.addAttribute("charge");
+  int massIdx                  = tspecies.addAttribute("mass");
+  tspecies(chargeIdx, upIdx)   = -1;
+  tspecies(massIdx, upIdx)     = 1.0;
+
   FakeRandom rg;
 
   QMCHamiltonian h;
-  TrialWaveFunction psi(c);
+  TrialWaveFunction psi;
   FakeUpdate update(elec, psi, h, rg);
 
   update.put(NULL);
@@ -70,14 +74,9 @@ TEST_CASE("QMCUpdate", "[drivers]")
 
 TEST_CASE("CloneManager", "[drivers]")
 {
-  OHMMS::Controller->initialize(0, NULL);
   Communicate* c = OHMMS::Controller;
 
-  HamiltonianPool hpool(c);
   CloneManager cm;
-
-  //double acc_ratio = cm.acceptRatio();
-  //std::cout << "acc ratio = " << acc_ratio << std::endl;
 }
 
 } // namespace qmcplusplus

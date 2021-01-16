@@ -17,12 +17,11 @@
 
 #include "Message/Communicate.h"
 #include "Numerics/OneDimGridBase.h"
-#include "Particle/DistanceTableData.h"
 #include "ParticleIO/XMLParticleIO.h"
 #include "Numerics/GaussianBasisSet.h"
 
-#include "QMCWaveFunctions/lcao/LCAOrbitalSet.h"
-#include "QMCWaveFunctions/lcao/CuspCorrection.h"
+#include "QMCWaveFunctions/LCAO/LCAOrbitalSet.h"
+#include "QMCWaveFunctions/LCAO/CuspCorrection.h"
 
 #include "QMCWaveFunctions/SPOSetBuilderFactory.h"
 
@@ -30,7 +29,6 @@ namespace qmcplusplus
 {
 TEST_CASE("readCuspInfo", "[wavefunction]")
 {
-  OHMMS::Controller->initialize(0, NULL);
   Communicate* c = OHMMS::Controller;
 
   typedef OneDimGridBase<double> GridType;
@@ -66,7 +64,6 @@ TEST_CASE("readCuspInfo", "[wavefunction]")
 
 TEST_CASE("applyCuspInfo", "[wavefunction]")
 {
-  OHMMS::Controller->initialize(0, NULL);
   Communicate* c = OHMMS::Controller;
 
   Libxml2Document doc;
@@ -99,7 +96,7 @@ TEST_CASE("applyCuspInfo", "[wavefunction]")
 
   elec.R = 0.0;
 
-  elec.addTable(ions, DT_SOA);
+  elec.addTable(ions);
   elec.update();
 
   Libxml2Document doc2;
@@ -107,37 +104,30 @@ TEST_CASE("applyCuspInfo", "[wavefunction]")
   REQUIRE(okay);
   xmlNodePtr root2 = doc2.getRoot();
 
-  TrialWaveFunction psi(c);
-
   WaveFunctionComponentBuilder::PtclPoolType particle_set_map;
   particle_set_map["e"]    = &elec;
   particle_set_map["ion0"] = &ions;
 
-  SPOSetBuilderFactory bf(elec, psi, particle_set_map);
+  SPOSetBuilderFactory bf(c, elec, particle_set_map);
 
   OhmmsXPathObject MO_base("//determinantset", doc2.getXPathContext());
   REQUIRE(MO_base.size() == 1);
 
   SPOSetBuilder* bb = bf.createSPOSetBuilder(MO_base[0]);
-  REQUIRE(bb != NULL);
+  REQUIRE(bb != nullptr);
 
   OhmmsXPathObject slater_base("//determinant", doc2.getXPathContext());
-  bb->loadBasisSetFromXML(MO_base[0]);
   SPOSet* sposet = bb->createSPOSet(slater_base[0]);
 
   LCAOrbitalSet* lcob = dynamic_cast<LCAOrbitalSet*>(sposet);
-  REQUIRE(lcob != NULL);
+  REQUIRE(lcob != nullptr);
 
 
-  LCAOrbitalSet phi = LCAOrbitalSet(lcob->myBasisSet);
-  phi.setOrbitalSetSize(lcob->OrbitalSetSize);
-  phi.BasisSetSize = lcob->BasisSetSize;
-  phi.setIdentity(false);
+  LCAOrbitalSet phi(std::unique_ptr<LCAOrbitalSet::basis_type>(lcob->myBasisSet->makeClone()), lcob->isOptimizable());
+  phi.setOrbitalSetSize(lcob->getOrbitalSetSize());
 
-  LCAOrbitalSet eta = LCAOrbitalSet(lcob->myBasisSet);
-  eta.setOrbitalSetSize(lcob->OrbitalSetSize);
-  eta.BasisSetSize = lcob->BasisSetSize;
-  eta.setIdentity(false);
+  LCAOrbitalSet eta(std::unique_ptr<LCAOrbitalSet::basis_type>(lcob->myBasisSet->makeClone()), lcob->isOptimizable());
+  eta.setOrbitalSetSize(lcob->getOrbitalSetSize());
 
   *(eta.C) = *(lcob->C);
   *(phi.C) = *(lcob->C);
@@ -163,8 +153,8 @@ TEST_CASE("applyCuspInfo", "[wavefunction]")
   okay = readCuspInfo("hcn_downdet.cuspInfo.xml", "downdet", orbital_set_size, info);
 
   REQUIRE(okay);
-  Vector<double> xgrid;
-  Vector<double> rad_orb;
+  Vector<RealType> xgrid;
+  Vector<RealType> rad_orb;
   int ngrid = 10;
   xgrid.resize(ngrid);
   for (int i = 0; i < ngrid; i++)
@@ -243,13 +233,10 @@ TEST_CASE("applyCuspInfo", "[wavefunction]")
   CHECK((*lcob->C)(0, 1) == Approx(0.0));
   CHECK((*lcob->C)(0, 2) == Approx(0.0));
   CHECK((*lcob->C)(0, 3) != 0.0);
-
-  SPOSetBuilderFactory::clear();
 }
 
 TEST_CASE("HCN MO with cusp", "[wavefunction]")
 {
-  OHMMS::Controller->initialize(0, NULL);
   Communicate* c = OHMMS::Controller;
 
   Libxml2Document doc;
@@ -282,7 +269,7 @@ TEST_CASE("HCN MO with cusp", "[wavefunction]")
 
   elec.R = 0.0;
 
-  elec.addTable(ions, DT_SOA);
+  elec.addTable(ions);
   elec.update();
 
   Libxml2Document doc2;
@@ -290,13 +277,11 @@ TEST_CASE("HCN MO with cusp", "[wavefunction]")
   REQUIRE(okay);
   xmlNodePtr root2 = doc2.getRoot();
 
-  TrialWaveFunction psi(c);
-
   WaveFunctionComponentBuilder::PtclPoolType particle_set_map;
   particle_set_map["e"]    = &elec;
   particle_set_map["ion0"] = &ions;
 
-  SPOSetBuilderFactory bf(elec, psi, particle_set_map);
+  SPOSetBuilderFactory bf(c, elec, particle_set_map);
 
   OhmmsXPathObject MO_base("//determinantset", doc2.getXPathContext());
   REQUIRE(MO_base.size() == 1);
@@ -304,12 +289,10 @@ TEST_CASE("HCN MO with cusp", "[wavefunction]")
   xmlSetProp(MO_base[0], (const xmlChar*)"cuspCorrection", (const xmlChar*)"yes");
 
   SPOSetBuilder* bb = bf.createSPOSetBuilder(MO_base[0]);
-  REQUIRE(bb != NULL);
+  REQUIRE(bb != nullptr);
 
   OhmmsXPathObject slater_base("//determinant", doc2.getXPathContext());
-  bb->loadBasisSetFromXML(MO_base[0]);
   SPOSet* sposet = bb->createSPOSet(slater_base[0]);
-
 
   SPOSet::ValueVector_t values;
   SPOSet::GradVector_t dpsi;
@@ -323,7 +306,7 @@ TEST_CASE("HCN MO with cusp", "[wavefunction]")
   ParticleSet::SingleParticlePos_t newpos;
   elec.makeMove(0, newpos);
 
-  sposet->evaluate(elec, 0, values);
+  sposet->evaluateValue(elec, 0, values);
 
   // Values from gen_cusp_corr.py
   REQUIRE(values[0] == Approx(0.00945227));
@@ -340,7 +323,7 @@ TEST_CASE("HCN MO with cusp", "[wavefunction]")
   elec.makeMove(0, newpos);
 
   values = 0.0;
-  sposet->evaluate(elec, 0, values);
+  sposet->evaluateValue(elec, 0, values);
   //std::cout << "values = " << values << std::endl;
   // Values from gen_cusp_corr.py
   REQUIRE(values[0] == Approx(9.5150713253));
@@ -353,7 +336,7 @@ TEST_CASE("HCN MO with cusp", "[wavefunction]")
 
 
   values = 0.0;
-  sposet->evaluate(elec, 0, values, dpsi, d2psi);
+  sposet->evaluateVGL(elec, 0, values, dpsi, d2psi);
 
   //std::cout << "values = " << values << std::endl;
   //std::cout << "dpsi = " << dpsi << std::endl;
@@ -425,14 +408,11 @@ TEST_CASE("HCN MO with cusp", "[wavefunction]")
   REQUIRE(all_grad[0][1][1] == Approx(0.0000000000));
   REQUIRE(all_grad[0][1][2] == Approx(0.0000000000));
   REQUIRE(all_lap[0][1] == Approx(19.8720529007));
-
-  SPOSetBuilderFactory::clear();
 }
 
 // Test case with multiple atoms of the same type
 TEST_CASE("Ethanol MO with cusp", "[wavefunction]")
 {
-  OHMMS::Controller->initialize(0, NULL);
   Communicate* c = OHMMS::Controller;
 
   Libxml2Document doc;
@@ -465,7 +445,7 @@ TEST_CASE("Ethanol MO with cusp", "[wavefunction]")
 
   elec.R = 0.0;
 
-  elec.addTable(ions, DT_SOA);
+  elec.addTable(ions);
   elec.update();
 
   Libxml2Document doc2;
@@ -473,13 +453,11 @@ TEST_CASE("Ethanol MO with cusp", "[wavefunction]")
   REQUIRE(okay);
   xmlNodePtr root2 = doc2.getRoot();
 
-  TrialWaveFunction psi(c);
-
   WaveFunctionComponentBuilder::PtclPoolType particle_set_map;
   particle_set_map["e"]    = &elec;
   particle_set_map["ion0"] = &ions;
 
-  SPOSetBuilderFactory bf(elec, psi, particle_set_map);
+  SPOSetBuilderFactory bf(c, elec, particle_set_map);
 
   OhmmsXPathObject MO_base("//determinantset", doc2.getXPathContext());
   REQUIRE(MO_base.size() == 1);
@@ -487,10 +465,9 @@ TEST_CASE("Ethanol MO with cusp", "[wavefunction]")
   xmlSetProp(MO_base[0], (const xmlChar*)"cuspCorrection", (const xmlChar*)"yes");
 
   SPOSetBuilder* bb = bf.createSPOSetBuilder(MO_base[0]);
-  REQUIRE(bb != NULL);
+  REQUIRE(bb != nullptr);
 
   OhmmsXPathObject slater_base("//determinant", doc2.getXPathContext());
-  bb->loadBasisSetFromXML(MO_base[0]);
   SPOSet* sposet = bb->createSPOSet(slater_base[0]);
 
 
@@ -510,7 +487,7 @@ TEST_CASE("Ethanol MO with cusp", "[wavefunction]")
   ParticleSet::SingleParticlePos_t newpos;
   elec.makeMove(0, newpos);
 
-  sposet->evaluate(elec, 0, values);
+  sposet->evaluateValue(elec, 0, values);
 
   // Values from gen_cusp_corr.py
   REQUIRE(values[0] == Approx(4.3617329704));
@@ -527,7 +504,7 @@ TEST_CASE("Ethanol MO with cusp", "[wavefunction]")
   REQUIRE(values[11] == Approx(0.4250074750));
   REQUIRE(values[12] == Approx(0.0767950823));
 
-  sposet->evaluate(elec, 0, values, dpsi, d2psi);
+  sposet->evaluateVGL(elec, 0, values, dpsi, d2psi);
 
   REQUIRE(values[0] == Approx(4.3617329704));
   REQUIRE(values[1] == Approx(0.0014119853));
@@ -574,8 +551,6 @@ TEST_CASE("Ethanol MO with cusp", "[wavefunction]")
   REQUIRE(all_grad[0][11][1] == Approx(0.9883840215));
   REQUIRE(all_grad[0][11][2] == Approx(1.7863218842));
   REQUIRE(all_lap[0][11] == Approx(-33.5202249813));
-
-  SPOSetBuilderFactory::clear();
 }
 
 

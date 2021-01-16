@@ -17,12 +17,12 @@
  *@brief Definition of OperatorBase
  */
 #include "Message/Communicate.h"
-#include <QMCHamiltonians/OperatorBase.h>
-#include <QMCHamiltonians/QMCHamiltonian.h>
+#include "OperatorBase.h"
+#include "QMCHamiltonians/QMCHamiltonian.h"
 
 namespace qmcplusplus
 {
-OperatorBase::OperatorBase() : myIndex(-1), Value(0.0), Dependants(0), tWalker(0)
+OperatorBase::OperatorBase() : myIndex(-1), Dependants(0), Value(0.0), tWalker(0)
 {
   quantum_domain = no_quantum_domain;
   energy_domain  = no_energy_domain;
@@ -35,6 +35,10 @@ OperatorBase::OperatorBase() : myIndex(-1), Value(0.0), Dependants(0), tWalker(0
   UpdateMode.set(PRIMARY, 1);
 }
 
+/** The correct behavior of this routine requires estimators with non-deterministic components
+ * in their evaluate() function to override this function.
+ */
+OperatorBase::Return_t OperatorBase::evaluateDeterministic(ParticleSet& P) { return evaluate(P); }
 /** Take o_list and p_list update evaluation result variables in o_list?
  *
  * really should reduce vector of local_energies. matching the ordering and size of o list
@@ -42,9 +46,58 @@ OperatorBase::OperatorBase() : myIndex(-1), Value(0.0), Dependants(0), tWalker(0
  */
 void OperatorBase::mw_evaluate(const RefVector<OperatorBase>& O_list, const RefVector<ParticleSet>& P_list)
 {
+/**  Temporary raw omp pragma for simple thread parallelism
+   *   ignoring the driver level concurrency
+   *   
+   *  \todo replace this with a proper abstraction. It should adequately describe the behavior
+   *  and strictly limit the activation of this level concurrency to when it is intended.
+   *  It is unlikely to belong in this function.
+   *  
+   *  This implicitly depends on openmp work division logic. Essentially adhoc runtime
+   *  crowds over which we have given up control of thread/global scope.
+   *  How many walkers per thread? How to handle their data movement if any of these
+   *  hamiltonians should be accelerated? We can neither reason about or describe it in C++
+   *
+   *  As I understand it it should only be required for as long as the AMD openmp offload 
+   *  compliler is incapable of running multiple threads. They should/must fix their compiler
+   *  before delivery of frontier and it should be removed at that point at latest
+   *
+   *  If you want 16 threads of 1 walker that should be 16 crowds of 1
+   *  not one crowd of 16 with openmp thrown in at hamiltonian level.
+   *  If this must be different from the other crowd batching. Make this a reasoned about
+   *  and controlled level of concurency blocking at the driver level.
+   *
+   *  This is only thread safe only if each walker has a complete
+   *  set of anything involved in an Operator.evaluate.
+   */
 #pragma omp parallel for
   for (int iw = 0; iw < O_list.size(); iw++)
     O_list[iw].get().evaluate(P_list[iw]);
+}
+
+void OperatorBase::mw_evaluateWithParameterDerivatives(const RefVector<OperatorBase>& O_list,
+                                                       const RefVector<ParticleSet>& P_list,
+                                                       const opt_variables_type& optvars,
+                                                       RecordArray<ValueType>& dlogpsi,
+                                                       RecordArray<ValueType>& dhpsioverpsi)
+{
+  int nparam = dlogpsi.nparam();
+  std::vector<ValueType> tmp_dlogpsi(nparam);
+  std::vector<ValueType> tmp_dhpsioverpsi(nparam);
+  for (int iw = 0; iw < O_list.size(); iw++)
+  {
+    for (int j = 0; j < nparam; j++)
+    {
+      tmp_dlogpsi[j] = dlogpsi.getValue(j, iw);
+    }
+
+    O_list[iw].get().evaluateValueAndDerivatives(P_list[iw], optvars, tmp_dlogpsi, tmp_dhpsioverpsi);
+
+    for (int j = 0; j < nparam; j++)
+    {
+      dhpsioverpsi.setValue(j, iw, dhpsioverpsi.getValue(j, iw) + tmp_dhpsioverpsi[j]);
+    }
+  }
 }
 
 

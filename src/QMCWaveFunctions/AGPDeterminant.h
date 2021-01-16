@@ -51,14 +51,12 @@ public:
   void resetParameters(const opt_variables_type& active);
   void reportStatus(std::ostream& os);
 
-  void resetTargetParticleSet(ParticleSet& P);
-
   ///reset the size: with the number of particles and number of orbtials
   void resize(int nup, int ndown);
 
   void registerData(ParticleSet& P, WFBufferType& buf);
 
-  ValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false);
+  LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false);
 
   void copyFromBuffer(ParticleSet& P, WFBufferType& buf);
 
@@ -66,7 +64,7 @@ public:
    * @param P current configuration
    * @param iat the particle thas is being moved
    */
-  ValueType ratio(ParticleSet& P, int iat);
+  PsiValueType ratio(ParticleSet& P, int iat);
 
   void ratioUp(ParticleSet& P, int iat);
 
@@ -74,7 +72,7 @@ public:
 
   /** move was accepted, update the real container
    */
-  void acceptMove(ParticleSet& P, int iat);
+  void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false);
 
   /** move was rejected. copy the real container to the temporary to move on
    */
@@ -92,7 +90,7 @@ public:
    *contribution of the determinant to G(radient) and L(aplacian)
    *for local energy calculations.
    */
-  ValueType evaluateLog(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
+  LogValueType evaluateLog(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
 
   WaveFunctionComponentPtr makeClone(ParticleSet& tqp) const;
 
@@ -153,7 +151,7 @@ public:
   IndexVector_t Pivot;
 
   ///current ratio
-  RealType curRatio;
+  PsiValueType curRatio;
   ///cummulate ratio for particle-by-particle update
   RealType cumRatio;
   ///address of  dpsiU[0][0]
