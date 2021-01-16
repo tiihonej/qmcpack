@@ -28,10 +28,10 @@ namespace qmcplusplus
 /// Constructor
 VMCUpdatePbyPGuide::VMCUpdatePbyPGuide(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, RandomGenerator_t& rg)
     : QMCUpdateBase(w, psi, h, rg),
-      buffer_timer_(*TimerManager.createTimer("VMCUpdatePbyPGuide::Buffer",timer_level_medium)),
-      movepbyp_timer_(*TimerManager.createTimer("VMCUpdatePbyPGuide::MovePbyP",timer_level_medium)),
-      hamiltonian_timer_(*TimerManager.createTimer("VMCUpdatePbyPGuide::Hamiltonian",timer_level_medium)),
-      collectables_timer_(*TimerManager.createTimer("VMCUpdatePbyPGuide::Collectables",timer_level_medium))
+      buffer_timer_(*timer_manager.createTimer("VMCUpdatePbyPGuide::Buffer",timer_level_medium)),
+      movepbyp_timer_(*timer_manager.createTimer("VMCUpdatePbyPGuide::MovePbyP",timer_level_medium)),
+      hamiltonian_timer_(*timer_manager.createTimer("VMCUpdatePbyPGuide::Hamiltonian",timer_level_medium)),
+      collectables_timer_(*timer_manager.createTimer("VMCUpdatePbyPGuide::Collectables",timer_level_medium))
 {
 }
 
@@ -61,7 +61,6 @@ void VMCUpdatePbyPGuide::advanceWalker(Walker_t& thisWalker, bool recompute)
       RealType sqrttau     = std::sqrt(tauovermass);
       for (int iat = W.first(ig); iat < W.last(ig); ++iat)
       {
-        W.setActive(iat);
         PosType dr;
         if (UseDrift)
         {
@@ -92,8 +91,8 @@ void VMCUpdatePbyPGuide::advanceWalker(Walker_t& thisWalker, bool recompute)
         }
         else
         {
-          RealType ratio = Psi.ratioGuide(W, iat);
-          prob           = ratio * ratio;
+          ValueType ratio = Psi.ratioGuide(W, iat);
+          prob           = std::norm(ratio);
         }
         if (prob >= std::numeric_limits<RealType>::epsilon() && RandomGen() < prob * std::exp(logGb - logGf))
         {
