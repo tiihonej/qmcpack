@@ -314,17 +314,17 @@ struct WaveFunctionComponent : public QMCTraits
                                  std::vector<PsiValueType>& ratios,
                                  std::vector<GradType>& grad_new);
 
-  virtual RealType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
+  virtual LogValueType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
   {
     return evaluateLog(P,G,L);
   }
 
-  virtual ValueType ratioGuide(ParticleSet& P, int iat)
+  virtual PsiValueType ratioGuide(ParticleSet& P, int iat)
   {
     return ratio(P,iat);
   }
 
-  virtual ValueType ratioGradGuide(ParticleSet& P, int iat, GradType& grad_iat)
+  virtual PsiValueType ratioGradGuide(ParticleSet& P, int iat, GradType& grad_iat)
   {
     return ratioGrad(P,iat,grad_iat);
   }

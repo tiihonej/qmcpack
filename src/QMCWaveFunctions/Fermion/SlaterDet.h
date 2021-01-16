@@ -224,9 +224,9 @@ public:
     Dets[det_id]->mw_calcRatio(extract_DetRef_list(wfc_list, det_id), P_list, iat, ratios);
   }
 
-  virtual inline ValueType ratioGuide(ParticleSet& P, int iat) { return Dets[getDetID(iat)]->ratioGuide(P, iat); }
+  virtual inline PsiValueType ratioGuide(ParticleSet& P, int iat) { return Dets[getDetID(iat)]->ratioGuide(P, iat); }
 
-  virtual RealType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
+  virtual LogValueType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
 
   virtual WaveFunctionComponentPtr makeClone(ParticleSet& tqp) const override;
 

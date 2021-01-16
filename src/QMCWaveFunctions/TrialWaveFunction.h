@@ -373,8 +373,8 @@ public:
                               bool fromscratch);
 
   //Functions related to VMC via a guiding function:
-  RealType ratioGuide(ParticleSet& P, int iat);
-  RealType ratioGradGuide(ParticleSet& P, int iat, GradType& grad_iat);
+  ValueType ratioGuide(ParticleSet& P, int iat);
+  ValueType ratioGradGuide(ParticleSet& P, int iat, GradType& grad_iat);
   GradType evalGradGuide(ParticleSet& P, int iat);
   RealType evaluateLogOnlyGuide(ParticleSet& P);
 

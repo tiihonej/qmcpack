@@ -405,12 +405,12 @@ typename DiracDeterminant<DU_TYPE>::PsiValueType DiracDeterminant<DU_TYPE>::rati
 }
 
 template<typename DU_TYPE>
-typename DiracDeterminant<DU_TYPE>::ValueType DiracDeterminant<DU_TYPE>::ratioGuide(ParticleSet& P, int iat)
+typename DiracDeterminant<DU_TYPE>::PsiValueType DiracDeterminant<DU_TYPE>::ratioGuide(ParticleSet& P, int iat)
 {
   UpdateMode             = ORB_PBYP_RATIO;
   const int WorkingIndex = iat - FirstIndex;
   SPOVTimer.start();
-  Phi->evaluate(P, iat, psiV);
+  Phi->evaluateValue(P, iat, psiV);
   SPOVTimer.stop();
   RatioTimer.start();
   // This is an optimization.
@@ -458,6 +458,7 @@ typename DiracDeterminant<DU_TYPE>::ValueType DiracDeterminant<DU_TYPE>::ratioGu
   return curRatio;
 }
 
+template<typename DU_TYPE>
 void DiracDeterminant<DU_TYPE>::evaluateRatios(const VirtualParticleSet& VP, std::vector<ValueType>& ratios)
 {
   RatioTimer.start();
@@ -718,7 +719,7 @@ typename DiracDeterminant<DU_TYPE>::LogValueType DiracDeterminant<DU_TYPE>::eval
   return LogValue;
 }
 template<typename DU_TYPE>
-typename DiracDeterminant<DU_TYPE>::RealType DiracDeterminant<DU_TYPE>::evaluateLogGuide(ParticleSet& P,
+typename DiracDeterminant<DU_TYPE>::LogValueType DiracDeterminant<DU_TYPE>::evaluateLogGuide(ParticleSet& P,
                                                                                     ParticleSet::ParticleGradient_t& G,
                                                                                     ParticleSet::ParticleLaplacian_t& L)
 {

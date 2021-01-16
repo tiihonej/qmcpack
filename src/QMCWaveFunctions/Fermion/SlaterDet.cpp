@@ -135,7 +135,7 @@ SlaterDet::LogValueType SlaterDet::evaluateLog(ParticleSet& P,
     LogValue += Dets[i]->evaluateLog(P, G, L);
   return LogValue;
 }
-SlaterDet::RealType SlaterDet::evaluateLogGuide(ParticleSet& P,
+SlaterDet::LogValueType SlaterDet::evaluateLogGuide(ParticleSet& P,
                                            ParticleSet::ParticleGradient_t& G,
                                            ParticleSet::ParticleLaplacian_t& L)
 {
@@ -143,11 +143,9 @@ SlaterDet::RealType SlaterDet::evaluateLogGuide(ParticleSet& P,
   //for(int i=0; i<Dets.size(); i++) psi *= Dets[i]->evaluate(P,G,L);
   //return LogValue = evaluateLogAndPhase(psi,PhaseValue);
   LogValue   = 0.0;
-  PhaseValue = 0.0;
   for (int i = 0; i < Dets.size(); ++i)
   {
     LogValue += Dets[i]->evaluateLogGuide(P, G, L);
-    PhaseValue += Dets[i]->PhaseValue;
   }
   return LogValue;
 }

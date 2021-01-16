@@ -122,8 +122,8 @@ public:
                           TinyVector<ParticleSet::ParticleGradient_t, OHMMS_DIM>& grad_grad,
                           TinyVector<ParticleSet::ParticleLaplacian_t, OHMMS_DIM>& lapl_grad) override;
 
-  ValueType ratioGuide(ParticleSet& P, int iat);
-  RealType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
+  PsiValueType ratioGuide(ParticleSet& P, int iat);
+  LogValueType evaluateLogGuide(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L);
   /** move was accepted, update the real container
    */
   void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false) override;
