@@ -57,9 +57,9 @@ public:
   {
     const RealType* restrict ePtr = awalker.getPropertyBase();
     RealType wwght                = wgt * awalker.Weight * awalker.GuideWeight;
-    scalars[0](ePtr[ENERGY_INDEX], wwght);
-    scalars[1](ePtr[ENERGY_INDEX] * ePtr[ENERGY_INDEX], wwght);
-    scalars[2](ePtr[POTENTIAL_INDEX], wwght);
+    scalars[0](ePtr[WP::LOCALENERGY], wwght);
+    scalars[1](ePtr[WP::LOCALENERGY] * ePtr[WP::LOCALENERGY], wwght);
+    scalars[2](ePtr[WP::LOCALPOTENTIAL], wwght);
     for (int target = 3, source = FirstHamiltonian; target < scalars.size(); ++target, ++source)
       scalars[target](ePtr[source], wwght);
   }
