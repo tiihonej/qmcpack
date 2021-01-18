@@ -433,8 +433,10 @@ typename DiracDeterminant<DU_TYPE>::PsiValueType DiracDeterminant<DU_TYPE>::rati
   int nrows=psiM.size();
   temp_vec1.resize(nrows);
   temp_vec2.resize(nrows);
-
-  InverseUpdateByRow(psiM_temp,psiV,temp_vec1,temp_vec2,WorkingIndex,curRatio);
+  
+  ValueType curval(0.0);
+  InverseUpdateByRow(psiM_temp,psiV,temp_vec1,temp_vec2,WorkingIndex,curval);
+  curRatio=static_cast<PsiValueType>(curval);
    
   RealType l2_new = MatrixOperators::frobenius_norm(psiM_temp);
 
@@ -443,15 +445,18 @@ typename DiracDeterminant<DU_TYPE>::PsiValueType DiracDeterminant<DU_TYPE>::rati
 
   RealType logG_old = (Rval_old/epsilon-1)*std::log(Rval_old/epsilon);
   RealType logG_new = (Rval_new/epsilon-1)*std::log(Rval_new/epsilon);
-
+  
+  PsiValueType minusGold = std::exp(-logG_old);
+  PsiValueType plusGnew = std::exp(logG_new);
+  PsiValueType diffG=std::exp(logG_new-logG_old);
   if(Rval_new > epsilon && Rval_old > epsilon)
     return curRatio;
   else if(Rval_new > epsilon && Rval_old <= epsilon)
-    return curRatio*std::exp(-logG_old);
+    return curRatio*minusGold;
   else if(Rval_new <= epsilon && Rval_old > epsilon)
-    return curRatio*std::exp(logG_new);
+    return curRatio*plusGnew;
   else if(Rval_new <= epsilon && Rval_old <= epsilon)
-    return curRatio*std::exp(logG_new-logG_old);
+    return curRatio*diffG;
   else
     APP_ABORT("ratioGuide:  I shouldn't be here...\n");
   
@@ -726,7 +731,7 @@ typename DiracDeterminant<DU_TYPE>::LogValueType DiracDeterminant<DU_TYPE>::eval
   recompute(P);
   RealType l2 = MatrixOperators::frobenius_norm(psiM);
   RealType Rval=(l2 !=0 ? 1.0/l2: 0);
-  RealType logGval = (Rval/epsilon-1.0)*std::log(Rval/epsilon);
+  LogValueType logGval = (Rval/epsilon-1.0)*std::log(Rval/epsilon);
   //app_log()<<" epsilon = "<<epsilon<<" l2 = "<<l2<<" Rval="<<Rval<<" logGval="<<logGval<<" LogVal = "<<LogValue<<std::endl; 
   if(Rval > epsilon)
     return LogValue;
