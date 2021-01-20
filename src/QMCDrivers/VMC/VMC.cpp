@@ -177,12 +177,6 @@ void VMC::resetRun()
 
       if (SpinMoves == "yes")
       {
-        if(UseGuide == "yes") {
-          Movers[ip] = new VMCUpdatePbyPGuide(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]); 
-          }
-        else {
-          Movers[ip] = new VMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
-          }
         if (qmc_driver_mode[QMC_UPDATE_MODE])
         {
           Movers[ip] = new SOVMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
@@ -196,7 +190,12 @@ void VMC::resetRun()
       {
         if (qmc_driver_mode[QMC_UPDATE_MODE])
         {
-          Movers[ip] = new VMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
+          if(UseGuide == "yes") {
+            Movers[ip] = new VMCUpdatePbyPGuide(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]); 
+          }
+          else {
+            Movers[ip] = new VMCUpdatePbyP(*wClones[ip], *psiClones[ip], *hClones[ip], *Rng[ip]);
+          }
         }
         else
         {
