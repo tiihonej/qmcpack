@@ -434,9 +434,7 @@ typename DiracDeterminant<DU_TYPE>::PsiValueType DiracDeterminant<DU_TYPE>::rati
   temp_vec1.resize(nrows);
   temp_vec2.resize(nrows);
   
-  ValueType curval(0.0);
-  InverseUpdateByRow(psiM_temp,psiV,temp_vec1,temp_vec2,WorkingIndex,curval);
-  curRatio=static_cast<PsiValueType>(curval);
+  InverseUpdateByRow(psiM_temp,psiV,temp_vec1,temp_vec2,WorkingIndex,curRatio);
    
   RealType l2_new = MatrixOperators::frobenius_norm(psiM_temp);
 
